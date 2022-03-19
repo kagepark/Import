@@ -30,9 +30,9 @@ def lib_ver():
             return ver_a[1]
     return 1.0
 
-pkg_name='kmisc'
-pkg_desc='Enginering useful library'
-pkg_git="https://github.com/kagepark/kmisc"
+pkg_name='kmport'
+pkg_desc='Extended import function'
+pkg_git="https://github.com/kagepark/Import"
 long_description=''
 if os.path.isfile('README.md'):
     with open("README.md", "r") as fh:
