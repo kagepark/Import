@@ -6,26 +6,38 @@ make to seperate to Import from kmisc
 
 # Install
 ```javascript
-pip3 install Import
+pip3 install kmport
 ```
 
 # Functions
 ## Global()
- - Method's global variables
+    Method's global variables
 ## StdOut(msg)
- - Standard Output Print without new line symbol
+    Standard Output Print without new line symbol
 ## def StdErr(msg)
- - Standard Error Print without new line symbol
+    Standard Error Print without new line symbol
 ## PyVer(main=None,miner=None,msym=None)
- - python version check
+    python version check
+    ```
+    ex)
+    if PyVer(3): # If Python version 3 then ...
+       ~~~
+    ```
 ## find_executable(executable,path=None)
- - Find Excuatable command location
+    Find Excuatable command location
+    ```
+    ex)
+    if find_executable('ping'): # if ping command is in the system
+       ~~~
+    
+    ping_path=find_executable('ping') # Get ping command full path
+    ```
 ## ByteName(src)
- - Get Byte type name
+    Get Byte type name
 ## Bytes(src,**opts)
- - Convert data to bytes data
+    Convert data to bytes data
 ## Str(src,**opts)
- - Convert data to String data
+    Convert data to String data
 ## Int(i,default='org',sym=None,err=False):
     Convert data to Int data when possible. if not then return default (original data)
     support data type: int,float,digit number,list,tuple
@@ -36,8 +48,29 @@ pip3 install Import
     err     : 
         False: replace data for possible positions
         True : if convert error in list/tuple then return default
-## Join(*inps,symbol='_-_',byte=None,ignore_type=(dict,bool,None),ignore_data=(),append_front='',append_end='')
- - Similar as 'symbol'.join([list]) function
+## Join(*inps,symbol='_-_',byte=None,ignore_data=(),append_front='',append_end='')
+    Similar as join function.
+    ```
+    ex)
+    Join(['a','b','c'],' ') same as ' '.join(['a','b','c'])
+
+    Join(['a','b','c'],'\n',append_front='  ') 
+    Output:
+    a
+      b
+      c
+
+    Join(['a','b','c'],'\n',append_end='  ') 
+    Output:
+    a<newline>
+    b   <newline>
+    c   <newline>
+
+    Join(['a','b','c'],'\n',append_front='  ',ignore_data=['b']) # Ignore 'b' data
+    Output:
+    a
+      c
+    ```
 ## FixIndex(src,idx,default=False,err=False):
     Find Index number in the list,tuple,str,dict
     default   : if wrong or error then return default
@@ -45,16 +78,55 @@ pip3 install Import
         False: fixing index to correcting index without error
         True: if wrong index then return default value
 ## Next(src,step=0,out=None,default='org')
- - Get Next data or first key of the dict 
+    Get Next data or first key of the dict 
+    ```
+    ex) get send data in the list
+    Next([1,2,3,4],step=1)
+    Output:
+    2
+
+    ex) get dictionary key
+    Next({'a':1})
+    Output:
+    a
+
+    Next({'a':1,'b':2},step=2)
+    Output:
+    b
+    ```
 ## Copy(src)
- - Copy data
+    Copy data
+    ```
+    a={'a':1,'b':2}
+    b=Copy(a)
+    ```
 ## TypeName(obj)
- - Get input's Type,Instance's name
+    Get input's Type,Instance's name
+    ```
+    TypeName(1)     # int
+    TypeName('1')   # str
+    TypeName(int)   # int
+    TypeName('int') # int
+    TypeName(str)   # str
+    TypeName('str') # str
+
+    def abc(): pass
+    TypeName(abc)   # function
+
+    class cc:
+        def AA(): pass
+    TypeName(cc)    # classobj
+
+    import os
+    TypeName(os)    # module
+
+    ...
+    ```
 ## Type(*inps,**opts): 
     Similar as isinstance(A,())
     support : basic type and ('byte','bytes'),('obj','object'),('func','unboundmethod','function'),('classobj','class'),'generator','method','long',....
 ## FIND(src).Find(find,src='_#_',sym='\n',default=[],out=None,findall=True,word=False,mode='value',prs=None,line_num=False,peel=None,idx=None)
- - Searching regular expression form data and return the data
+    Searching regular expression form data and return the data
 ## Found(data,find,digitstring=False,word=False,white_space=True,sense=True,location=False):
     if found <find> in <data> then return True, not then False
     If find "[All]" then you can type "\[All\]" at the <find> location
@@ -87,7 +159,10 @@ pip3 install Import
        white_space          : True: keep white space, False:(default) ignore white_space
        digitstring          : True:(default) string and intiger is same, False: different
 ## IsIn(find,dest,idx=False,default=False,sense=False,startswith=True,endswith=True,Type=False,digitstring=True,word=True,white_space=False,order=False)
- - Check key or value in the dict, list or tuple then True, not then False
+    Check key or value in the dict, list or tuple then True, not then False
+    ```
+    IsIn('abc',['AC','abc','uuu']): True ('abc' in the list['AC','abc','uuu'])
+    ```
 ## WhiteStrip(src,mode=True):
     remove multi space to single space, remove first and end space
     others return original
@@ -101,12 +176,34 @@ pip3 install Import
     -space   :
       - True : aprove space to data in source
       - False: ignore space data in source
+   ```
+   IsNone('')   : True
+   IsNone(None) : True
+   IsNone([])   : True
+   IsNone({})   : True
+   IsNone(0)    : False
+   IsNone(False): False
+   ```
 ## IsVar(src,obj=None,default=False,mode='all',parent=0)
- - Check the input(src) is Variable name or not (in OBJ or in my function)
+    Check the input(src) is Variable name or not (in OBJ or in my function)
+    ```
+    g=9
+    def abc(c=5):
+       b=3
+       IsVar('b') : True
+       IsVar('c') : True
+       IsVar('g') : True
+       IsVar('m') : False
+    ```
 ## IsFunction(src,find='_#_')
- - Check the data is Function or not
+    Check the find is a Function in the src module
+    ```
+    def abc(): pass
+    IsFunction(MyModule(),'abc'): True
+    IsFunction(MyModule(),abc)  : True
+    ```
 ## IsBytes(src)
- - Check data is Bytes or not
+    Check data is Bytes or not
 ## IsInt(src,mode='all'):
     Check data is Int or not
     - mode : int => check only int
@@ -140,7 +237,7 @@ pip3 install Import
     sort list
     <list>.sort(key=CompVersion)  or sorted(<list>,key=CompVersion)
 ## ModVersion(mod)
- - Find Module Version
+    Find Module Version
 ## Install(module,install_account='',mode=None,upgrade=False,version=None,force=False,pkg_map=None,err=False):
     Install python module file
     module name
@@ -180,9 +277,15 @@ pip3 install Import
     -install_account=: '--user','user','myaccount','account',myself then install at my local account
                  default: Install by System default setting
 ## MethodInClass(class_name)
- - Get Method list in Class
+    Get Method list in Class
 ## ObjInfo(obj): Get object information
- - type, name, method list, path, module_name, module_version, module
+    type, name, method list, path, module_name, module_version, module
+    ```
+    import requests
+    ObjInfo(requests)
+    Output:
+    {'type': 'module', 'name': 'requests', 'methods': ['ConnectTimeout', 'ConnectionError', 'DependencyWarning', 'FileModeWarning', 'HTTPError', 'JSONDecodeError', 'NullHandler', 'PreparedRequest', 'ReadTimeout', 'Request', 'RequestException', 'RequestsDependencyWarning', 'Response', 'Session', 'Timeout', 'TooManyRedirects', 'URLRequired', '__author__', '__author_email__', '__build__', '__builtins__', '__cached__', '__cake__', '__copyright__', '__description__', '__doc__', '__file__', '__license__', '__loader__', '__name__', '__package__', '__path__', '__spec__', '__title__', '__url__', '__version__', '_check_cryptography', '_internal_utils', 'adapters', 'api', 'auth', 'certs', 'chardet_version', 'charset_normalizer_version', 'check_compatibility', 'codes', 'compat', 'cookies', 'delete', 'exceptions', 'get', 'head', 'hooks', 'logging', 'models', 'options', 'packages', 'patch', 'post', 'put', 'request', 'session', 'sessions', 'ssl', 'status_codes', 'structures', 'urllib3', 'utils', 'warnings'], 'path': ['/usr/lib/python3.10/site-packages/requests'], 'version': '2.27.1', 'module_name': 'requests', 'module': <module 'requests' from '/usr/lib/python3.10/site-packages/requests/__init__.py'>}
+    ```
 ## MyModule(default=False,parent=-1): 
     Get current module 
     - parent
@@ -204,7 +307,7 @@ pip3 install Import
         C()
     A()                    -> Calling def A() in python script(module)
 ## Frame2Function(obj,default=False):
- - Get Function Object from frame or frame info
+    Get Function Object from frame or frame info
 ## FunctionName(parent=0,default=False,history=0,tree=False,args=False,line_number=False,filename=False,obj=False,show=False):
     Get function name
      - parent
@@ -219,9 +322,9 @@ pip3 install Import
      - filename     : show filename
      - obj          : Get OBJ (return list)
 ## FunctionList(obj=None)
- - Get function list in this object
+    Get function list in this object
 ## GetClass(obj,default=None)
- - Get Class object from instance,method,function
+    Get Class object from instance,method,function
 ## FunctionArgs(func,**opts):
     Get function's input Arguments
     - mode
@@ -251,7 +354,7 @@ pip3 install Import
        local : function's local(inside) variable
        global: function's global variable
 ## Uniq(src,default='org'):
- - make to uniq data
+    make to uniq data
 ## Split(src,sym,default=None,sym_spliter='|'):
     multipul split then 'a|b|...'
     without "|" then same as string split function
@@ -306,11 +409,11 @@ pip3 install Import
       True: Check IP already used the port(return True) or still available(return False)
     pool: if give IP Pool(tuple) then check the IP is in the POOL or not.
 ## ping(host,**opts)
- - same as ping command
+    same as ping command
 ## WEB().Request()
 ## TIME()
 ## rshell(cmd,timeout=None,ansi=True,path=None,progress=False,progress_pre_new_line=False,progress_post_new_line=False,log=None,progress_interval=5,cd=False,default_timeout=3600):
-  Run a shell command
+    Run a shell command
 ## sprintf(string,*inps,**opts):
     """ipmitool -H %(ipmi_ip)s -U %(ipmi_user)s -P '%(ipmi_pass)s' """%(**opts)
     """{app} -H {ipmi_ip} -U {ipmi_user} -P '{ipmi_pass}' """.format(**opts)
@@ -460,7 +563,7 @@ pip3 install Import
 ## CleanAnsi(data):
 ## cli_input(msg,**opts):
 ## TypeData(src,want_type=None,default='org',spliter=None)
- - Convert (input)data to want type (ex: str -> list, int, ...), can not convert to type then return False
+    Convert (input)data to want type (ex: str -> list, int, ...), can not convert to type then return False
 ## MoveData(src,data=None,to=None,from_idx=None,force=False,default='org'):
     support src type is list,str,(tuple)
     moving format : data(data) or from_idx(int)
