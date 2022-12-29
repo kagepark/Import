@@ -10,15 +10,23 @@ pip3 install Import
 ```
 
 # Functions
-- Global() : Method's global variables
-- StdOut(msg) : Standard Output Print without new line symbol
-- def StdErr(msg): Standard Error Print without new line symbol
-- PyVer(main=None,miner=None,msym=None): python version check
-- find_executable(executable,path=None): Find Excuatable command location
-- ByteName(src): Get Byte type name
-- Bytes(src,**opts): Convert data to bytes data
-- Str(src,**opts): Convert data to String data
-- Int(i,default='org',sym=None,err=False):
+## Global()
+ - Method's global variables
+## StdOut(msg)
+ - Standard Output Print without new line symbol
+## def StdErr(msg)
+ - Standard Error Print without new line symbol
+## PyVer(main=None,miner=None,msym=None)
+ - python version check
+## find_executable(executable,path=None)
+ - Find Excuatable command location
+## ByteName(src)
+ - Get Byte type name
+## Bytes(src,**opts)
+ - Convert data to bytes data
+## Str(src,**opts)
+ - Convert data to String data
+## Int(i,default='org',sym=None,err=False):
     Convert data to Int data when possible. if not then return default (original data)
     support data type: int,float,digit number,list,tuple
     default: (default org)
@@ -28,21 +36,26 @@ pip3 install Import
     err     : 
         False: replace data for possible positions
         True : if convert error in list/tuple then return default
-- Join(*inps,symbol='_-_',byte=None,ignore_type=(dict,bool,None),ignore_data=(),append_front='',append_end=''): Similar as 'symbol'.join([list]) function
-- FixIndex(src,idx,default=False,err=False):
+## Join(*inps,symbol='_-_',byte=None,ignore_type=(dict,bool,None),ignore_data=(),append_front='',append_end='')
+ - Similar as 'symbol'.join([list]) function
+## FixIndex(src,idx,default=False,err=False):
     Find Index number in the list,tuple,str,dict
     default   : if wrong or error then return default
     err : default False
         False: fixing index to correcting index without error
         True: if wrong index then return default value
-- Next(src,step=0,out=None,default='org'): Get Next data or first key of the dict 
-- Copy(src): Copy data
-- TypeName(obj): Get input's Type,Instance's name
-- Type(*inps,**opts): 
+## Next(src,step=0,out=None,default='org')
+ - Get Next data or first key of the dict 
+## Copy(src)
+ - Copy data
+## TypeName(obj)
+ - Get input's Type,Instance's name
+## Type(*inps,**opts): 
     Similar as isinstance(A,())
     support : basic type and ('byte','bytes'),('obj','object'),('func','unboundmethod','function'),('classobj','class'),'generator','method','long',....
-- FIND(src).Find(find,src='_#_',sym='\n',default=[],out=None,findall=True,word=False,mode='value',prs=None,line_num=False,peel=None,idx=None): Searching regular expression form data and return the data
-- Found(data,find,digitstring=False,word=False,white_space=True,sense=True,location=False):
+## FIND(src).Find(find,src='_#_',sym='\n',default=[],out=None,findall=True,word=False,mode='value',prs=None,line_num=False,peel=None,idx=None)
+ - Searching regular expression form data and return the data
+## Found(data,find,digitstring=False,word=False,white_space=True,sense=True,location=False):
     if found <find> in <data> then return True, not then False
     If find "[All]" then you can type "\[All\]" at the <find> location
     if not then "[]" will be work with re expression
@@ -58,7 +71,7 @@ pip3 install Import
        word                 : True: <find> is correct word, False:(default) <find> in insde string
        digitstring          : True: string and intiger is same, False:(default) different
        location             : True: return found location ex:(3,10), False:(default) return True/False
-- IsSame(src,dest,sense=False,order=False,Type=False,digitstring=True,white_space=False,**opts):
+## IsSame(src,dest,sense=False,order=False,Type=False,digitstring=True,white_space=False,**opts):
     return True/False
     Check same data or not between src and dest datas
     <dest> rule:
@@ -73,11 +86,12 @@ pip3 install Import
        sense                : True: sensetive, False:(default) lower and upper is same
        white_space          : True: keep white space, False:(default) ignore white_space
        digitstring          : True:(default) string and intiger is same, False: different
-- IsIn(find,dest,idx=False,default=False,sense=False,startswith=True,endswith=True,Type=False,digitstring=True,word=True,white_space=False,order=False): Check key or value in the dict, list or tuple then True, not then False
-- WhiteStrip(src,mode=True):
+## IsIn(find,dest,idx=False,default=False,sense=False,startswith=True,endswith=True,Type=False,digitstring=True,word=True,white_space=False,order=False)
+ - Check key or value in the dict, list or tuple then True, not then False
+## WhiteStrip(src,mode=True):
     remove multi space to single space, remove first and end space
     others return original
-- IsNone(src,**opts):
+## IsNone(src,**opts):
     Check the SRC is similar None type data('',None) or not
     -check_type=<type> : include above and if different type then the return True
     -list_none :
@@ -87,16 +101,19 @@ pip3 install Import
     -space   :
       - True : aprove space to data in source
       - False: ignore space data in source
-- IsVar(src,obj=None,default=False,mode='all',parent=0): Check the input(src) is Variable name or not (in OBJ or in my function)
-- IsFunction(src,find='_#_'): Check the data is Function or not
-- IsBytes(src): Check data is Bytes or not
-- IsInt(src,mode='all'):
+## IsVar(src,obj=None,default=False,mode='all',parent=0)
+ - Check the input(src) is Variable name or not (in OBJ or in my function)
+## IsFunction(src,find='_#_')
+ - Check the data is Function or not
+## IsBytes(src)
+ - Check data is Bytes or not
+## IsInt(src,mode='all'):
     Check data is Int or not
     - mode : int => check only int
              str => int type string only
              all => Int and int type string
 
-- Dict(*inp,**opt):
+## Dict(*inp,**opt):
     Dictionary
     - Define
     - marge
@@ -104,7 +121,7 @@ pip3 install Import
     - Append
     support : Dict, list or tuple with 2 data, dict_items, Django request.data, request data, like path type list([('/a/b',2),('/a/c',3),...]), kDict
 
-- CompVersion(*inp,**opts):
+## CompVersion(*inp,**opts):
     input: source, compare_symbol(>x,<x,==,!xx), destination
       return BOOL
     input: source, destination, compare_symbol='>x,<x,==,!xx'
@@ -122,8 +139,9 @@ pip3 install Import
 
     sort list
     <list>.sort(key=CompVersion)  or sorted(<list>,key=CompVersion)
-- ModVersion(mod): Find Module Version
-- Install(module,install_account='',mode=None,upgrade=False,version=None,force=False,pkg_map=None,err=False):
+## ModVersion(mod)
+ - Find Module Version
+## Install(module,install_account='',mode=None,upgrade=False,version=None,force=False,pkg_map=None,err=False):
     Install python module file
     module name
     install_accout='' : default None,  --user : install on account's directory
@@ -143,7 +161,7 @@ pip3 install Import
     err    : default False
       True : if installing got any isseu then crashing
       False: if installing got any issue then return False
-- Import(*inps,**opts):
+## Import(*inps,**opts):
     basic function of import
     if not found the module then automaticall install
     version check and upgrade, reinstall according to the version
@@ -161,15 +179,17 @@ pip3 install Import
     -dbg=True    : show comment (default : False)
     -install_account=: '--user','user','myaccount','account',myself then install at my local account
                  default: Install by System default setting
-- MethodInClass(class_name): Get Method list in Class
-- ObjInfo(obj): Get object information : type, name, method list, path, module_name, module_version, module
-- MyModule(default=False,parent=-1): 
+## MethodInClass(class_name)
+ - Get Method list in Class
+## ObjInfo(obj): Get object information
+ - type, name, method list, path, module_name, module_version, module
+## MyModule(default=False,parent=-1): 
     Get current module 
     - parent
       -1 : my current python page's module
       0  : my function's module
       1  : my parent's module
-- CallerName(default=False,detail=False):
+## CallerName(default=False,detail=False):
     Get the caller name of my group function
     detail=True: return (func name, line number, filename)
     default    : If not found caller name then return default
@@ -183,8 +203,9 @@ pip3 install Import
             CallerName()   -> Called my group by A() function => A
         C()
     A()                    -> Calling def A() in python script(module)
-- Frame2Function(obj,default=False): Get Function Object from frame or frame info
-- FunctionName(parent=0,default=False,history=0,tree=False,args=False,line_number=False,filename=False,obj=False,show=False):
+## Frame2Function(obj,default=False):
+ - Get Function Object from frame or frame info
+## FunctionName(parent=0,default=False,history=0,tree=False,args=False,line_number=False,filename=False,obj=False,show=False):
     Get function name
      - parent
        0            : my name (default)
@@ -197,9 +218,11 @@ pip3 install Import
      - line_number  : show line number
      - filename     : show filename
      - obj          : Get OBJ (return list)
-- FunctionList(obj=None): Get function list in this object
-- GetClass(obj,default=None): Get Class object from instance,method,function
-- FunctionArgs(func,**opts):
+## FunctionList(obj=None)
+ - Get function list in this object
+## GetClass(obj,default=None)
+ - Get Class object from instance,method,function
+## FunctionArgs(func,**opts):
     Get function's input Arguments
     - mode
       - defaults : get default (V=?,...)
@@ -210,10 +233,10 @@ pip3 install Import
       - list,tuple: return arguments to list format
       default output : dictioniary format
     - default : if nothing then return default value (default None)
-- Args(src,field='all',default={}):
+## Args(src,field='all',default={}):
     Get Class, instance's global arguments
     Get Function input parameters
-- Variable(src=None,obj=None,parent=0,history=False,default=False,mode='local',VarType=None,alltype=True):
+## Variable(src=None,obj=None,parent=0,history=False,default=False,mode='local',VarType=None,alltype=True):
     Get available variable data
      - src: 
        if None: return whole environment (dict)
@@ -227,18 +250,19 @@ pip3 install Import
      - mode  : variable area
        local : function's local(inside) variable
        global: function's global variable
-- Uniq(src,default='org'): make to uniq data
-- Split(src,sym,default=None,sym_spliter='|'):
+## Uniq(src,default='org'):
+ - make to uniq data
+## Split(src,sym,default=None,sym_spliter='|'):
     multipul split then 'a|b|...'
     without "|" then same as string split function
-- FormData(src,default=None,want_type=None):
+## FormData(src,default=None,want_type=None):
     convert string data to format
     '1' => 1
     json string to json format
     "{'a':1}" => {'a':1}
     "[1,2,3]" => [1,2,3]
     ....
-- IndexForm(idx,idx_only=False,symbol=None):
+## IndexForm(idx,idx_only=False,symbol=None):
     return : <True/False>, Index Data
      - False: not found Index form from input idx 
      - True : found Index
@@ -248,7 +272,7 @@ pip3 install Import
      - Single     : int: Index, others: key
     - idx_only    : only return integer index
     - symbol   : default None, if idx is string and want split with symbol
-- Get(*inps,**opts):
+## Get(*inps,**opts):
     Get (Any) something
     Get('whoami')  : return my function name
     Get('funclist'): return my module's function list
@@ -261,12 +285,12 @@ pip3 install Import
     Get(<function>,'args')  : return the functions Arguments
     <option>
     default : None, any issue
-- ExceptMessage(msg='',default=None):
+## ExceptMessage(msg='',default=None):
     Try:
        AAA
     Except:
        err=ExceptMessage() => If excepting then taken error or traceback code and return it
-- IpV4(ip,out='str',default=False,port=None,bmc=False,used=False,pool=None):
+## IpV4(ip,out='str',default=False,port=None,bmc=False,used=False,pool=None):
     check/convert IP
     ip : int, str, ...
     out:
@@ -281,18 +305,19 @@ pip3 install Import
       False: default (not check)
       True: Check IP already used the port(return True) or still available(return False)
     pool: if give IP Pool(tuple) then check the IP is in the POOL or not.
-- ping(host,**opts): same as ping command
-- WEB().Request()
-- TIME()
-- rshell(cmd,timeout=None,ansi=True,path=None,progress=False,progress_pre_new_line=False,progress_post_new_line=False,log=None,progress_interval=5,cd=False,default_timeout=3600):
+## ping(host,**opts)
+ - same as ping command
+## WEB().Request()
+## TIME()
+## rshell(cmd,timeout=None,ansi=True,path=None,progress=False,progress_pre_new_line=False,progress_post_new_line=False,log=None,progress_interval=5,cd=False,default_timeout=3600):
   Run a shell command
-- sprintf(string,*inps,**opts):
+## sprintf(string,*inps,**opts):
     """ipmitool -H %(ipmi_ip)s -U %(ipmi_user)s -P '%(ipmi_pass)s' """%(**opts)
     """{app} -H {ipmi_ip} -U {ipmi_user} -P '{ipmi_pass}' """.format(**opts)
     """{} -H {} -U {} -P '{}' """.format(*inps)
     """{0} -H {1} -U {2} -P '{3}' """.format(*inps)
-- Sort(src,reverse=False,func=None,order=None,field=None,base='key',sym=None): Sorting data
-- MacV4(src,**opts):
+## Sort(src,reverse=False,func=None,order=None,field=None,base='key',sym=None): Sorting data
+## MacV4(src,**opts):
     Check Mac address format and convert
     Hex to Int
     Hex to Mac string
@@ -305,7 +330,7 @@ pip3 install Import
     case : 
       upper : upper case output
       lower : lower case output
-- Path(*inp,**opts):
+## Path(*inp,**opts):
     Get Path of input
     inputs)
        ~       : home path
@@ -332,7 +357,7 @@ pip3 install Import
      'a/b/c'  => ['a','b','c']    (out=list)
      ['','a','b','c']  => '/a/b/c'(out=str)
      ['a','b','c']     => 'a/b/c' (out=str)
-- Cut(src,head_len=None,body_len=None,new_line='\n',out=str):
+## Cut(src,head_len=None,body_len=None,new_line='\n',out=str):
     Cut string
     head_len : int : first line length (default None)
                if body_len is None then everything cut same length with head_len
@@ -341,7 +366,7 @@ pip3 install Import
     out=
         str  : output to string with new_line (default)
         list : output to list instead new_line
-- Space(num=4,fill=None,mode='space',tap=''):
+## Space(num=4,fill=None,mode='space',tap=''):
     make a charactor(space, tap) group
     num: default 4, how many fill out <fill>
     mode:
@@ -353,15 +378,15 @@ pip3 install Import
     tap:
       ''   : default
       <spcial inital chractor>: pre-fillout with this chractor
-- WrapString(string,fspace=0,nspace=0,new_line='\n',flength=0,nlength=0,ntap=0,NFLT=False,mode='space',default=''):
-- GetKey(src,find=None,default=None,mode='first',root=None):
+## WrapString(string,fspace=0,nspace=0,new_line='\n',flength=0,nlength=0,ntap=0,NFLT=False,mode='space',default=''):
+## GetKey(src,find=None,default=None,mode='first',root=None):
     Get key from dict,list,tuple,str
     find : if matched value then return the key/index of the data
     mode :
       first : default: return first find
       all   : return found all
     default : return when not found
-- rm(*args,**opts):
+## rm(*args,**opts):
     delete local file with option like as CLI
        [<opt>] <files>/<directory>
        -f    : don't ask delete
@@ -385,7 +410,7 @@ pip3 install Import
          recurring 
            False: searching data in first level
            True : keep searching inside dictionary 
-- List(*inps,**opts):
+## List(*inps,**opts):
     tuple2list: 
         True : convert tuple data to list data
         False: append tuple into list
@@ -405,13 +430,13 @@ pip3 install Import
         auto      : auto fixing index
         err       : not found then return default(False)
         ignore    : not found then ignore the data
-- Replace(src,replace_what,replace_to,default=None,newline='\n'):
+## Replace(src,replace_what,replace_to,default=None,newline='\n'):
     replace string (src, from, to)
     if not string then return default
     default: return defined value when not string
       'org': return src
       ...  : return defined default
-- OutFormat(data,out=None,strip=False,peel=None):
+## OutFormat(data,out=None,strip=False,peel=None):
     Output Format maker
     <option>
       out
@@ -425,17 +450,18 @@ pip3 install Import
       strip 
         False: not remove white space
         True : remove white space
-- FeedFunc(obj,*inps,**opts):
+## FeedFunc(obj,*inps,**opts):
     Automatically Feed matched variables to function
     FeedFunc(<func>,<function's arguments>,<function's variables>)
     if something wrong then return False
     if correct then return output of ran the Function with inputs
-- printf(*msg,**opts):
-- ColorStr(msg,**opts):
-- CleanAnsi(data):
-- cli_input(msg,**opts):
-- TypeData(src,want_type=None,default='org',spliter=None): Convert (input)data to want type (ex: str -> list, int, ...), can not convert to type then return False
-- MoveData(src,data=None,to=None,from_idx=None,force=False,default='org'):
+## printf(*msg,**opts):
+## ColorStr(msg,**opts):
+## CleanAnsi(data):
+## cli_input(msg,**opts):
+## TypeData(src,want_type=None,default='org',spliter=None)
+ - Convert (input)data to want type (ex: str -> list, int, ...), can not convert to type then return False
+## MoveData(src,data=None,to=None,from_idx=None,force=False,default='org'):
     support src type is list,str,(tuple)
     moving format : data(data) or from_idx(int)
       - data : if src has many same data then just keep single data at moved
