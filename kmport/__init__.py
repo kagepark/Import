@@ -46,10 +46,23 @@ def Global():
     return dict(inspect.getmembers(inspect.stack()[-1][0]))["f_globals"]
 
 def StdOut(msg):
-    sys.stdout.write(msg)
-    sys.stdout.flush()
+    '''
+    Standard Output Print without new line symbol
+    '''
+    try:
+        if type(a).__name__ == 'bytes':
+            sys.stdout.buffer.write(a)
+        else:
+            sys.stdout.write(a)
+        sys.stdout.flush()
+    except:
+        sys.stderr.write('Wrong output data format\n')
+        sys.stderr.flush()
 
 def StdErr(msg):
+    '''
+    Standard Error Print without new line symbol
+    '''
     sys.stderr.write(msg)
     sys.stderr.flush()
 
@@ -818,11 +831,13 @@ def IsIn(find,dest,idx=False,default=False,sense=False,startswith=True,endswith=
                 if Found(dest[idx],find,digitstring,word,white_space,sense): return True
         else:
             for i in dest:
-                if IsSame(find,i,sense,order,Type,digitstring,white_space): return True
+                #if IsSame(find,i,sense,order,Type,digitstring,white_space): return True
+                if IsSame(i,find,sense,order,Type,digitstring,white_space): return True
     elif isinstance(dest, dict):
         if idx in [None,'',False]:
             for i in dest:
-                if IsSame(find,i,sense,order,Type,digitstring,white_space): return True
+                #if IsSame(find,i,sense,order,Type,digitstring,white_space): return True
+                if IsSame(i,find,sense,order,Type,digitstring,white_space): return True
         else:
             if Found(dest.get(idx),find,digitstring,word,white_space,sense): return True
     return default
@@ -914,16 +929,19 @@ def IsVar(src,obj=None,default=False,mode='all',parent=0):
 
 def IsFunction(src,find='_#_'):
     '''
-    Check the data is Function or not
+    Check the find is Function in src object
     '''
     if IsNone(src):
         if isinstance(find,str) and find != '_#_':
             find=Global().get(find)
         return inspect.isfunction(find)
+    else:
+        if type(src).__name__ == 'function': return True # src is function then
+    # find function in object
     aa=[]
-    if not isinstance(find,str): find=find.__name__
-    if isinstance(src,str):
-        src=sys.modules.get(src)
+    if type(find).__name__ == 'function': find=find.__name__
+    if not isinstance(find,str): return False
+    if isinstance(src,str): src=sys.modules.get(src)
     if inspect.ismodule(src) or inspect.isclass(src):
         for name,fobj in inspect.getmembers(src):
             if inspect.isfunction(fobj): # inspect.ismodule(obj) check the obj is module or not
@@ -2834,12 +2852,12 @@ class TIME:
         if IsNone(time,chk_val=['_#_'],chk_only=True): time=self.src
         if IsNone(time,chk_val=[None,'',0,'0']):
             return datetime.now().strftime(tformat)
-        elif isinstance(time,int) or (isinstance(time,str) and time.isdigit()):
-            #if type(time) is int or (type(time) is str and time.isdigit()):
-            if read_format == '%S':
+
+        elif read_format == '%S':
+            if isinstance(time,int) or (isinstance(time,str) and time.isdigit()):
                 return datetime.fromtimestamp(int(time)).strftime(tformat)
-            else:
-                return datetime.strptime(str(time),read_format).strftime(tformat)
+        elif isinstance(time,str):
+            return datetime.strptime(time,read_format).strftime(tformat)
         elif type(time).__name__ == 'datetime':
             return time.strftime(tformat)
 
@@ -3022,7 +3040,7 @@ def sprintf(string,*inps,**opts):
 
 def Sort(src,reverse=False,func=None,order=None,field=None,base='key',sym=None):
     if isinstance(src,str) and not IsNone(sym): src=src.split(sym)
-    if isinstance(src,dict) and base == 'data':
+    if isinstance(src,dict) and base in ['data','value']:
         field=1
     def _clen_(e):
         try:
@@ -3077,7 +3095,7 @@ def Sort(src,reverse=False,func=None,order=None,field=None,base='key',sym=None):
                 lst.sort(reverse=reverse,key=_cstr_)
             else:
                 lst.sort(reverse=reverse,func=func)
-        elif base == 'value':
+        else: # value / data case
             field=1
             if order in [int,'int','digit','number']:
                 lst.sort(reverse=reverse,key=_cint_)
@@ -4032,3 +4050,73 @@ def MoveData(src,data=None,to=None,from_idx=None,force=False,default='org'):
         elif src_type == 'str': return Join(src,'')
         return src
     return Default(src,default)
+
+
+#if __name__ == "__main__":
+#    # Integer
+#    print("Get(12345):",Get(12345))
+#    print("Get(12345,1):",Get(12345,1))
+#    # String
+#    print("Get('12345'):",Get('12345'))
+#    print("Get('12345',0):",Get('12345',0))
+#    print("Get('12345',1):",Get('12345',1))
+#    print("Get('12345',4):",Get('12345',4))
+#    print("Get('12345',5):",Get('12345',5))
+#    print("Get('12345',-1):",Get('12345',-1))
+#    print("Get('12345',-5):",Get('12345',-5))
+#    print("Get('12345',-7):",Get('12345',-7))
+#    # List
+#    print("Get([1,2,3,4,5]):",Get([1,2,3,4,5]))
+#    print("Get([1,2,3,4,5],1):",Get([1,2,3,4,5],1))
+#    print("Get([1,2,3,4,5],(1,3)):",Get([1,2,3,4,5],(1,3)))
+#    print("Get([1,2,3,4,5],'1-3')):",Get([1,2,3,4,5],'1-3'))
+#    print("Get([1,2,3,4,5],-1)):",Get([1,2,3,4,5],-1))
+#    print("Get([1,2,3,4,5],-5)):",Get([1,2,3,4,5],-5))
+#    print("Get([1,2,3,4,5],-6)):",Get([1,2,3,4,5],-6))
+#    print("Get([1,2,3,4,5],5)):",Get([1,2,3,4,5],5))
+#    print("Get([1,2,3,4,5],'1|2')):",Get([1,2,3,4,5],'1|2'))
+#    print("Get([1,2,3,4,5],'1|2',idx_only=True)):",Get([1,2,3,4,5],'1|2',idx_only=True))
+#    # Dict
+#    print("Get({'a':{'b':{'c':1,'d':2},'e':3},'f':4}):",Get({'a':{'b':{'c':1,'d':2},'e':3},'f':4}))
+#    print("Get({'a':{'b':{'c':1,'d':2},'e':3},'f':4},'/a/b/c'):",Get({'a':{'b':{'c':1,'d':2},'e':3},'f':4},'/a/b/c'))
+#    print("Get({'a':{'b':{'c':1,'d':2},'e':3},'f':4},'a/b/d'):",Get({'a':{'b':{'c':1,'d':2},'e':3},'f':4},'a/b/d'))
+#    print("Get({'a':{'b':{'c':1,'d':2},'e':3},'f':4},'f'):",Get({'a':{'b':{'c':1,'d':2},'e':3},'f':4},'f'))
+#    print("Get({'a':{'b':{'c':1,'d':2},'e':3},'f':4},'a'):",Get({'a':{'b':{'c':1,'d':2},'e':3},'f':4},'a'))
+#    print("Get({'a':{'b':{'c':1,'d':2},'e':3},'f':4},-1):",Get({'a':{'b':{'c':1,'d':2},'e':3},'f':4},-1))
+#    print("Get({'a':{'b':{'c':1,'d':2},'e':3},'f':4},-1,idx_only=True):",Get({'a':{'b':{'c':1,'d':2},'e':3},'f':4},-1,idx_only=True))
+#    print("Get({'a':{'b':{'c':1,'d':2},'e':3},'f':4,'g':5},(1,2)):",Get({'a':{'b':{'c':1,'d':2},'e':3},'f':4,'g':5},(1,2)))
+#    # Module
+#    me=MyModule()
+#    #print("Get(me):",Get(me))
+#    print("Get(me,'Get'):",Get(me,'Get'))
+#    print("Get(me,'Get','Import'):",Get(me,'Get','Import'))
+#    print("Get(me,'func_list'):",Get(me,'func_list'))
+#    
+#    print('1 : ',TypeName(1))
+#    print('ping : ',TypeName('ping'))
+#    print('function ping : ',TypeName(ping))
+#    print('int : ',TypeName(int))
+#    print('str : ',TypeName(str))
+#    print('function : ',TypeName('function'))
+#    print('classobj : ',TypeName('classobj'))
+#    print('3.14 : ',TypeName(3.14))
+#    print('WEB : ',TypeName('WEB'))
+#    print('class WEB : ',TypeName(WEB))
+#    print('bool : ',TypeName(bool))
+#    print('False : ',TypeName(False))
+#    print('True : ',TypeName(True))
+#    print('None : ',TypeName(None))
+    # Function
+#    def KLog(inps,log_level=3,**opts):
+#        print("KLog:",':',inps,'log_level=',log_level)
+# 
+#    print('Klog1:',FeedFunc('KLog',inps='1111',log_level=9))
+#    print('Klog2:',FeedFunc('KLog','akd','uuuuuu',log_level=8,abc=33))
+#    print('Klog3:',FeedFunc('KLog',log_level=8,abc=33))
+#    print('int:',FeedFunc(int,'33',base=10))
+#    print('str:',FeedFunc(str,33))
+#    print('str:',FeedFunc(str,b'33'))
+#    print('list:',FeedFunc(list,'33'))
+#    print('list:',FeedFunc(list))
+#    print('dict:',FeedFunc(dict,[('aa','33')]))
+#    print('dict:',FeedFunc(dict))
