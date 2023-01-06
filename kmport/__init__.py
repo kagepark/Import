@@ -50,10 +50,10 @@ def StdOut(msg):
     Standard Output Print without new line symbol
     '''
     try:
-        if type(a).__name__ == 'bytes':
-            sys.stdout.buffer.write(a)
+        if type(msg).__name__ == 'bytes':
+            sys.stdout.buffer.write(msg)
         else:
-            sys.stdout.write(a)
+            sys.stdout.write(msg)
         sys.stdout.flush()
     except:
         sys.stderr.write('Wrong output data format\n')
@@ -698,11 +698,17 @@ def Found(data,find,digitstring=False,word=False,white_space=True,sense=True,loc
     def _Found_(data,find,word,sense,location):
         data_type=type(data).__name__
         if data_type == 'bytes':
-            find=Bytes(find).replace(b'*',b'.+').replace(b'?',b'.') # Fix * or ? case
-            if word and find: find=Bytes(r'\b(')+find+Bytes(')\b')
-                
+            find=Bytes(find)
         elif data_type == 'str':
-            find=Str(find).replace('*','.+').replace('?','.') # Fix * or ? case
+            find=Str(find)
+        if data == find: #Same Data
+            if location: return [(0,len(data))]
+            return True 
+        if data_type == 'bytes':
+            find=find.replace(b'*',b'.+').replace(b'?',b'.') # Fix * or ? case
+            if word and find: find=Bytes(r'\b(')+find+Bytes(')\b')
+        elif data_type == 'str':
+            find=find.replace('*','.+').replace('?','.') # Fix * or ? case
             if word and find: find=r'\b({0})\b'.format(find)
         if not find: return False
         try:
@@ -831,12 +837,10 @@ def IsIn(find,dest,idx=False,default=False,sense=False,startswith=True,endswith=
                 if Found(dest[idx],find,digitstring,word,white_space,sense): return True
         else:
             for i in dest:
-                #if IsSame(find,i,sense,order,Type,digitstring,white_space): return True
                 if IsSame(i,find,sense,order,Type,digitstring,white_space): return True
     elif isinstance(dest, dict):
         if idx in [None,'',False]:
             for i in dest:
-                #if IsSame(find,i,sense,order,Type,digitstring,white_space): return True
                 if IsSame(i,find,sense,order,Type,digitstring,white_space): return True
         else:
             if Found(dest.get(idx),find,digitstring,word,white_space,sense): return True
@@ -1883,6 +1887,8 @@ def Variable(src=None,obj=None,parent=0,history=False,default=False,mode='local'
     '''
     src_type=TypeName(src)
     obj_type=TypeName(obj)
+    parent=Int(parent)
+    if not isinstance(parent,int): parent=0
     if parent >= 0:
         loc=1+parent
     else:
@@ -1939,17 +1945,31 @@ def Variable(src=None,obj=None,parent=0,history=False,default=False,mode='local'
         #    return out # just return gotten data
     return default
 
-def Uniq(src,default='org'):
+def Uniq(src,default='org',sort=False,strip=False,cstrip=False):
+    '''
+    make to uniq data
+    default='org': return original data
+    sort=False   : sort data
+    strip=False  : remove white space and make to uniq
+    cstrip=False : check without white space, but remain first similar data
+    '''
     if isinstance(src,(list,tuple)):
         rt=[]
-        for i in src:
-            if i not in rt: rt.append(i)
-        if isinstance(src,tuple):
-            return tuple(rt)
-        return rt
-    if default in ['org',{'org'}]:
-        return src
-    return default
+        if cstrip:
+            nsrc=[i.strip() if isinstance(i,(str,bytes)) else i for i in src]
+            c=[]
+            for i,d in enumerate(nsrc):
+                if d not in c:
+                    c.append(d)
+                    rt.append(src[i])
+        else:
+            if strip:
+                src=[i.strip() if isinstance(i,(str,bytes)) else i for i in src]
+            for i in src:
+                if i not in rt: rt.append(i)
+        if sort: rt=Sort(rt)
+        return tuple(rt) if isinstance(src,tuple) else rt
+    return Default(src,default)
 
 def Split(src,sym,default=None,sym_spliter='|'):
     '''
@@ -2082,7 +2102,7 @@ def Get(*inps,**opts):
     default=opts.get('default')
     err=opts.get('err',opts.get('error',False))
     idx_only=opts.get('idx_only',opts.get('index_only',False))
-    _type=opts.get('type',opts.get('_type_'))
+    _type=opts.get('_type_',opts.get('type'))
 
     if len(inps) == 0:
         return Default(inps,default)
@@ -2259,22 +2279,27 @@ def Get(*inps,**opts):
                 if nkey.lower() == 'method':
                     return method
                 if method=='GET':
-                    return obj.GET.get(nkey,default)
+                    rt=obj.GET.get(nkey)
+                    if not IsNone(rt): return rt
+                    return default
                 elif method=='FILE':
                     rt=obj.FILES.getlist(nkey,default)
-                    if rt == default:
-                        rt=obj.FILES.get(nkey,default)
-                    return rt
+                    if not IsNone(rt):
+                        return OutFormat(rt,out='raw')
+                    #if not IsNone(rt): return rt
+                    #rt=obj.FILES.get(nkey,default)
+                    #if not IsNone(rt): return rt
+                    return default
                 elif method=='POST':
-                    rt=obj.FILES.getlist(nkey,default)
-                    if rt == default:
-                        rt=obj.FILES.get(nkey,default)
-                    if rt == default:
-                        rt=obj.POST.getlist(nkey,default)
-                    if rt == default:
-                        rt=obj.POST.get(nkey,default)
-                    return rt
-
+                    rt=obj.FILES.getlist(nkey)
+                    #rt2=obj.FILES.get(nkey)
+                    if not IsNone(rt):
+                        return OutFormat(rt,out='raw')
+                    rt=obj.POST.getlist(nkey)
+                    #rt=obj.POST.get(nkey)
+                    if not IsNone(rt):
+                        return OutFormat(rt,out='raw')
+                    return default
             if idx_type == 'str':
                 return _web_data(obj,nidx,method,default)
             elif idx_type == 'list':
@@ -2705,7 +2730,7 @@ class WEB:
         ip=opts.get('ip',None)
         port=opts.get('port',None)
         bmc=opts.get('bmc',False)
-        mode=opts.get('mode','get')
+        mode=opts.get('mode',opts.get('method','get'))
         max_try=opts.get('max_try',3) # Retry max number
         auth=opts.get('auth',None)
         user=opts.get('user',None)
@@ -3330,7 +3355,7 @@ def Space(num=4,fill=None,mode='space',tap=''):
         tap=tap+fill
     return tap
 
-def WrapString(string,fspace=0,nspace=0,new_line='\n',flength=0,nlength=0,ntap=0,NFLT=False,mode='space',default=''):
+def WrapString(string,fspace=0,nspace=0,new_line='\n',flength=0,nlength=0,ntap=0,NFLT=False,mode='space',default='',out='str'):
     if IsNone(string): return default
     if not Type(string,'str'):string='''{}'''.format(string)
     rc_str=[]
@@ -3341,7 +3366,10 @@ def WrapString(string,fspace=0,nspace=0,new_line='\n',flength=0,nlength=0,ntap=0
     #Body line design
     for ii in string_a[1:]:
         rc_str.append(Space(nspace,mode=mode)+Join(Cut(ii,head_len=nlength,new_line=new_line,out=list),'\n',append_front=Space(nspace,mode=mode)))
-    return new_line.join(rc_str)
+    #return new_line.join(rc_str)
+    if out in [list,'list']: return rc_str
+    elif out in [tuple,'tuple']: return tuple(rc_str)
+    return Join(rc_str,new_line)
 
 def GetKey(src,find=None,default=None,mode='first',root=None):
     '''
@@ -3534,6 +3562,8 @@ def List(*inps,**opts):
      first=<data> : move <data> to first
      end=<data>   : move <data> to end
      find=<data>  : get Index list
+     uniq=False   : Uniq data
+     strip=False  : remove white space
      default      : False
      mode 
         auto      : auto fixing index
@@ -3589,11 +3619,14 @@ def List(*inps,**opts):
                 rt=rt+List(rt,i,**opts)
                 continue
             rt.append(i)
-
+    if opts.get('strip'):
+        rt=[i.strip() if isinstance(i,(str,bytes)) else i for i in rt]
+    if opts.get('uniq'):
+        return Uniq(rt)
     idx=opts.get('idx')
     if not IsNone(idx):
         ok,idx=IndexForm(idx,idx_only=True,symbol=',')
-        if ok is False: opts.get('default',False)
+        if ok is False: return opts.get('default',False)
         if isinstance(idx,tuple) and len(idx) == 2:
             idx=range(idx[0],idx[1]+1)
         if not Type(idx,(list,tuple,'range')): idx=[idx]
