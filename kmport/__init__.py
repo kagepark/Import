@@ -3249,10 +3249,11 @@ def Path(*inp,**opts):
     elif isinstance(inp[0],(list,tuple)):
         full_path=list(inp[0])
     if full_path:
-        if full_path[0] == '~':      # ~ style
-            full_path=os.environ['HOME'].split(sym)+full_path[1:]
-        elif full_path[0] and full_path[0][0] == '~': # ~<user> style
+        if full_path[0] == '~' or (full_path[0] and full_path[0][0] == '~'):      # ~ or ~<user> style
+            #full_path=os.environ['HOME'].split(sym)+full_path[1:]
             full_path=os.path.expanduser(full_path[0]).split(sym)+full_path[1:]
+#        elif full_path[0] and full_path[0][0] == '~': # ~<user> style
+#            full_path=os.path.expanduser(full_path[0]).split(sym)+full_path[1:]
     if remove_dot:
         nfp=[]
         for i in full_path:
