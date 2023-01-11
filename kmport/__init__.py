@@ -19,9 +19,10 @@ from importlib import import_module
 #import pip
 from datetime import datetime
 from subprocess import check_call
-from subprocess import Popen as subprocess_Popen
 from subprocess import PIPE as subprocess_PIPE
+from subprocess import Popen as subprocess_Popen
 from subprocess import TimeoutExpired as subprocess_TimeoutExpired
+printf_log_base=None
 try:
     from StringIO import StringIO
 except ImportError:
@@ -2092,15 +2093,26 @@ def Get(*inps,**opts):
      - parent=1    : my parent's function list
     Get(<list|string|dict|int|...>,<index|key|keypath>): Get data at the <index|key|keypath>
      - keypath : '/a/b/c' => {'a':{'b':{'c':1,'d'}}} => return c's 1
+     - key     :
+       Range Format from 1 to 5: tuple format (1,5), String format '1-5' or '1:5' or '1~5'
+       OR data 1,3,5           : list format  [1,3,5], String format '1|3|5'
+         - if found any data then getting that data only
+         - if use fill_up option then if error of a key then fill to <fill_up> value at the error location.
+     - index   : integer       : single data
     Get('_this_',<key>): my functions's <key>
     Get('<var name>')  : return variable data
     Get('_this_','args')  : return my functions Arguments
     Get(<function>,'args')  : return the functions Arguments
     <option>
-    default : None, any issue
+      fill_up : If error of the key's value then fill up <fill_up> to right position when the <key> is list
+      default : None, any issue
+      err     : False, if any error then ignore the data
+      idx_only: if input data is dictionary then convert dictionary's keys to input data. So, int idx can get keys(list) name
+      _type_  : define to input data's data format (ex: (list,tuple))
     '''
     default=opts.get('default')
     err=opts.get('err',opts.get('error',False))
+    fill_up=opts.get('fill_up','_fAlsE_')
     idx_only=opts.get('idx_only',opts.get('index_only',False))
     _type=opts.get('_type_',opts.get('type'))
 
@@ -2137,6 +2149,9 @@ def Get(*inps,**opts):
     def _max_(obj,idx,err=True):
         obj_len=len(obj)
         if obj_len == 0: return None
+        if type(idx).__name__ != 'int':
+            if err is True: return False
+            return obj_len-1
         if idx >= 0:
             if obj_len <= idx:
                 if err is True: return False
@@ -2158,10 +2173,16 @@ def Get(*inps,**opts):
         elif idx_type == 'list':
             rt=[]
             for i in nidx:
-                if not IsInt(i): continue
-                ix=_max_(obj,Int(i),err)
+                #if not IsInt(i):
+                #    if fill_up == '_fAlsE_':
+                #        continue
+                #    else:
+                #        rt.append(fill_up)
+                ix=_max_(obj,Int(i,default=False,err=True),err)
                 if Type(ix,int):
                     rt.append(obj[ix])
+                elif fill_up != '_fAlsE_':
+                    rt.append(fill_up)
             return rt
         elif idx_type == 'int':
             ix=_max_(obj,nidx,err)
@@ -2179,8 +2200,11 @@ def Get(*inps,**opts):
                 rt=[]
                 for i in nidx:
                     if idx_only:
-                        ix=_max_(obj_items,Int(i),err)
-                        if Type(ix,int): rt.append(obj_items[ix])
+                        ix=_max_(obj_items,Int(i,default=False,err=True),err)
+                        if Type(ix,int):
+                            rt.append(obj_items[ix])
+                        elif fill_up != '_fAlsE_':
+                            rt.append(fill_up)
                     else:
                         t=obj.get(i)
                         if t is not None: rt.append(t)
@@ -3933,6 +3957,9 @@ def printf(*msg,**opts):
     if Type(log,'function'):
         log_p=True
         FeedFunc(log,msg_str,**opts)
+    if isinstance(printf_log_base,int) and not isinstance(printf_log_base,bool):
+        if printf_log_base < log_level:
+            return
     # Save msg to file
     if 'f' in dsp or 'a' in dsp:
         for ii in logfile:
