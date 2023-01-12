@@ -258,6 +258,9 @@ def Peel(i,mode=True,default='org',err=True,output_check=True):
     output_check: True:(default) If peeled data is list,tuple,dict then return default, False: just return peeled data
     '''
     if mode is False: return i
+    elif mode == 'force':
+        err=False
+        output_check=False
     if isinstance(i,(list,tuple,dict)):
         #Error condition
         if len(i) == 0: return Default(i,default)
@@ -268,7 +271,7 @@ def Peel(i,mode=True,default='org',err=True,output_check=True):
             #Check output data format
             if isinstance(rt,(list,tuple,dict)):
                 return Default(i,default)
-            return rt
+        return rt
     else:
         #Not peelable
         return i
@@ -575,7 +578,7 @@ class FIND:
         if isinstance(src,(list,tuple)):
             rt=[]
             for i in range(0,len(src)):
-                a=self.Find(find,src[i],sym=sym,default=default,out=out,findall=findall,word=word,mode=mode,prs=prs,line_num=line_num,peel=peel,idx=idx)
+                a=self.Find(find,src[i],sym=sym,default=[],out='list',findall=findall,word=word,mode=mode,prs=prs,line_num=line_num,peel=peel,idx=idx)
                 if a: rt=rt+a
             if len(rt):
                 return rt
@@ -597,7 +600,7 @@ class FIND:
                          if mode in ['value','*','all'] and find == found or (type(found) in [list,tuple] and find in found) or (type(find) is str and type(found) is str and find in found):
                              path.append(key)
                          else:
-                             for kk in self.Find(find,src[key],proper=proper,mode=mode): # recursing
+                             for kk in self.Find(find,src[key],proper=proper,mode=mode,out=dict,default={}): # recursing
                                  path.append(key+'/'+kk)
                 else:
                     if mode in ['value','*','all'] and find == found or (type(found) in [list,tuple] and find in found) or (type(find) is str and type(found) is str and find in found):
@@ -641,7 +644,8 @@ class FIND:
                                             found.update({dd:{'data':mm,'line':nn,'src':string_a[nn]}})
                                         else:
                                             found.update({dd:mm})
-                    if found: return OutFormat(found,out=out,peel=peel)
+                    #if found: return OutFormat(found,out=out,peel=peel)
+                    return OutFormat(found,out=out,peel=peel,org=src,default=default)
                 else:
                     found=[]
                     for nn in range(0,len(string_a)):
@@ -667,7 +671,8 @@ class FIND:
                                         found.append((mm,nn,string_a[nn]))
                                     else:
                                         found.append(mm)
-                    if found:return OutFormat(found,out=out,peel=peel)
+                    #if found:return OutFormat(found,out=out,peel=peel)
+                    return OutFormat(found,out=out,peel=peel,org=src,default=default)
 #                match=find_re.findall(src)
 #                if match: return OutFormat(match,out=out)
             elif isinstance(find,str):
@@ -677,7 +682,8 @@ class FIND:
                     find_re=re.compile(find,flags=re.IGNORECASE)
                 match=find_re.search(src)
                 if match: return OutFormat([match.group()],out=out,peel=peel)
-        return OutFormat(default,out=out,peel=peel)
+        #return OutFormat(default,out=out,peel=peel)
+        return OutFormat([],out=out,peel=peel,org=src,default=default)
 def Found(data,find,digitstring=False,word=False,white_space=True,sense=True,location=False):
     '''
     if found <find> in <data> then return True, not then False
@@ -2115,6 +2121,8 @@ def Get(*inps,**opts):
     fill_up=opts.get('fill_up','_fAlsE_')
     idx_only=opts.get('idx_only',opts.get('index_only',False))
     _type=opts.get('_type_',opts.get('type'))
+    out=opts.get('out',opts.get('out_form','raw'))
+    peel=opts.get('peel')
 
     if len(inps) == 0:
         return Default(inps,default)
@@ -2183,11 +2191,11 @@ def Get(*inps,**opts):
                     rt.append(obj[ix])
                 elif fill_up != '_fAlsE_':
                     rt.append(fill_up)
-            return rt
+            return OutFormat(rt,out=out,default=default,org=obj,peel=peel)
         elif idx_type == 'int':
             ix=_max_(obj,nidx,err)
             if Type(ix,int): return obj[ix]
-        if err is True: return Default(obj,default)
+        return Default(obj,default)
     elif obj_type in ('dict'):
         if ok is True:
             obj_items=list(obj.items())
@@ -2208,18 +2216,18 @@ def Get(*inps,**opts):
                     else:
                         t=obj.get(i)
                         if t is not None: rt.append(t)
-                return rt
+                return OutFormat(rt,out=out,default=default,org=obj,peel=peel)
             else:
                 if idx_only:
                     ix=_max_(obj_items,Int(idx),err)
                     if Type(ix,int): return obj_items[ix]
-                return obj.get(idx,default)
+                return obj.get(idx,Default(obj,default))
         elif ok is None: #Path Index
             for i in nidx:
                 if i not in obj: return Default(obj,default)
                 obj=obj[i]
             return obj
-        if err is True: return Default(obj,default)
+        return Default(obj,default)
     elif obj_type in ('function'): #???
         if ok:
             if idx_type == 'str':
@@ -2245,7 +2253,7 @@ def Get(*inps,**opts):
                             rt.append(Variable(nidx,parent=1))
                         else:
                             rt.append(Variable(nidx,obj))
-                return rt
+                return OutFormat(rt,out=out,default=default,org=obj,peel=peel)
     elif obj_type in ('instance','classobj','module'):
         if Type(idx,str) and idx.lower() in ['func','function','functions','funclist','func_list','list']:
             return FunctionList(obj)
@@ -2260,10 +2268,10 @@ def Get(*inps,**opts):
                             rt=rt+MethodInClass(obj)
                     else:
                         rt.append(getattr(obj,ff,default))
-            return rt
+            return OutFormat(rt,out=out,default=default,org=obj,peel=peel)
         elif idx_type == 'str':
             if obj_type == 'classobj': obj=obj() # move CLASS to CLASS()
-            return getattr(obj,nidx,default)
+            return getattr(obj,nidx,Default(obj,default))
         else:
             if Type(obj,'classobj'): obj=obj() # move from CLASS to CLASS()
             if ok is False:
@@ -2291,7 +2299,7 @@ def Get(*inps,**opts):
                 rt=[]
                 for ikey in nidx:
                     rt.append(_web_(obj,ikey))
-                return rt
+                return OutFormat(rt,out=out,default=default,org=obj,peel=peel)
     elif obj_type in ('request'): # Web Data2
         rt=[]
         method=opts.get('method',None)
@@ -2305,32 +2313,32 @@ def Get(*inps,**opts):
                 if method=='GET':
                     rt=obj.GET.get(nkey)
                     if not IsNone(rt): return rt
-                    return default
+                    return Default(obj,default)
                 elif method=='FILE':
                     rt=obj.FILES.getlist(nkey,default)
                     if not IsNone(rt):
-                        return OutFormat(rt,out='raw')
+                        return OutFormat(rt,out='raw',peel=peel)
                     #if not IsNone(rt): return rt
                     #rt=obj.FILES.get(nkey,default)
                     #if not IsNone(rt): return rt
-                    return default
+                    return Default(obj,default)
                 elif method=='POST':
                     rt=obj.FILES.getlist(nkey)
                     #rt2=obj.FILES.get(nkey)
                     if not IsNone(rt):
-                        return OutFormat(rt,out='raw')
+                        return OutFormat(rt,out='raw',peel=peel)
                     rt=obj.POST.getlist(nkey)
                     #rt=obj.POST.get(nkey)
                     if not IsNone(rt):
-                        return OutFormat(rt,out='raw')
-                    return default
+                        return OutFormat(rt,out='raw',peel=peel)
+                    return Default(obj,default)
             if idx_type == 'str':
                 return _web_data(obj,nidx,method,default)
             elif idx_type == 'list':
                 rt=[]
                 for i in nidx:
                     rt.append(_web_data(obj,i,method,default))
-                return rt
+                return OutFormat(rt,out=out,default=default,org=obj,peel=peel)
     elif obj_type in ('ImmutableMultiDict'): # Flask Web Data
         tmp={}
         if obj:
@@ -2339,7 +2347,7 @@ def Get(*inps,**opts):
         return Get(tmp,idx,default,err) 
     elif obj_type in ('kDict','kList','DICT'): 
         return Get(obj.Get(),idx,default,err) 
-    return Default(obj,default)
+    return OutFormat([],out=out,default=default,org=obj,peel=peel)
 
 
 def TryCode(code,default=False,_return_=True):
@@ -3753,8 +3761,8 @@ def krc(rt,chk='_',rtd={'GOOD':[True,'True','Good','Ok','Pass','Sure',{'OK'},0],
                 if type(jj) == type_irt and ((type_irt is str and jj.lower() == irt.lower()) or jj == irt):
                     return ii
         return 'UNKN'
-    rtc=Get(rt,'0|rc',err=False,default='org',type=(bool,int,list,tuple,dict))
-    nrtc=trans(Peel(rtc,default='unknown'))
+    rtc=Get(rt,'0|rc',err=True,default='org',type=(bool,int,list,tuple,dict))
+    nrtc=trans(Peel(rtc,err=False,default='unknown')) #If Get() got multi data then use first data
     if chk != '_':
         if not isinstance(chk,list): chk=[chk]
         for cc in chk:
@@ -3765,7 +3773,7 @@ def krc(rt,chk='_',rtd={'GOOD':[True,'True','Good','Ok','Pass','Sure',{'OK'},0],
         return Default(rt,default)
     return nrtc
 
-def OutFormat(data,out=None,strip=False,peel=None):
+def OutFormat(data,out=None,strip=False,peel=None,org=None,default=None):
     '''
     Output Format maker
     <option>
@@ -3781,29 +3789,43 @@ def OutFormat(data,out=None,strip=False,peel=None):
         False: not remove white space
         True : remove white space
     '''
+    out_data=None
     if out in [tuple,'tuple',list,'list']:
         if not isinstance(data,(tuple,list)):
-            data=[data]
+            out_data=[data]
         else:
-            data=list(data)
+            out_data=list(data)
         if out in [tuple,'tuple']:
-            return tuple(data)
-        return data
+            if out_data:
+                return tuple(out_data)
+            elif isinstance(default,tuple):
+                return default
+            else:
+                return (Default(org,default))
+        if out_data:
+            return out_data
+        elif isinstance(default,list):
+            return default
+        else:
+            return [Default(org,default)]
     elif out in [dict,'dict']:
-        return Dict(data)
-        #if IsNone(data): return {}
-        #if isinstance(data,dict): return data
-    elif out == 'raw' or IsNone(out):
-        if IsNone(peel): peel=True
-        return WhiteStrip(Peel(data,peel),strip)
+        if data:
+            return Dict(data)
+        elif isinstance(default,dict):
+            return default
+        else:
+            return Default(org,default)
     elif out in ['str',str]:
-        return '''{}'''.format(WhiteStrip(Peel(data,peel),strip))
+        out_data=WhiteStrip(Peel(data,peel),strip)
     elif out in ['int',int]:
-        try:
-            return Int(WhiteStrip(Peel(data,peel),strip))
-        except:
-            pass
-    return WhiteStrip(Peel(data,peel),strip)
+        out_data=Int(WhiteStrip(Peel(data,peel),strip))
+    if out_data is False: #if str or int got False then 
+        return Default(org,default)
+    if out == 'raw' or IsNone(out):
+        if IsNone(peel): peel=True
+    out_data=WhiteStrip(Peel(data,peel),strip)
+    if out_data: return out_data
+    return Default(org,default)
 
 def FeedFunc(obj,*inps,**opts):
     '''
