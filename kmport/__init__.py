@@ -837,10 +837,11 @@ def IsSame(src,dest,sense=False,order=False,digitstring=True,white_space=False,*
     else:
         return Found(src,dest,digitstring=digitstring,white_space=white_space,sense=sense)
 
-def IsIn(find,dest,idx=False,default=False,sense=False,startswith=True,endswith=True,Type=False,digitstring=True,word=True,white_space=False,order=False):
+def IsIn(find,dest,idx=False,default=False,sense=False,startswith=True,endswith=True,digitstring=True,word=True,white_space=False,order=False,**opts):
     '''
     Check key or value in the dict, list or tuple then True, not then False
     '''
+    _type_=opts.get('Type',opts.get('_type_',False))
     #dest_type=TypeName(dest)
     #if dest_type in ['list','tuple','str','bytes']:
     if Type(dest,('list','tuple','str','bytes')):
@@ -855,11 +856,11 @@ def IsIn(find,dest,idx=False,default=False,sense=False,startswith=True,endswith=
                 if Found(dest[idx],find,digitstring,word,white_space,sense): return True
         else:
             for i in dest:
-                if IsSame(i,find,sense,order,Type,digitstring,white_space): return True
+                if IsSame(i,find,sense,order,_type_,digitstring,white_space): return True
     elif isinstance(dest, dict):
         if idx in [None,'',False]:
             for i in dest:
-                if IsSame(i,find,sense,order,Type,digitstring,white_space): return True
+                if IsSame(i,find,sense,order,_type_,digitstring,white_space): return True
         else:
             if Found(dest.get(idx),find,digitstring,word,white_space,sense): return True
     return default
@@ -898,10 +899,10 @@ def IsNone(src,**opts):
 
     #check type
     CheckType=opts.get('check_type',None)
-    Type=False
+    _type_=False
     if CheckType is not None:
         value=value+[CheckType]
-        Type=True
+        _type_=True
     def _IsIn_(src,value,sense=False):
         if isinstance(value,(list,tuple)):
             for i in value:
@@ -922,23 +923,23 @@ def IsNone(src,**opts):
         if isinstance(src,(list,tuple)):
             if list_none:
                 for i in src:
-                    if not _IsIn_(WhiteStrip(i,BoolOperation(space,mode='opposit')),value,sense=False,Type=Type): return False
+                    if not _IsIn_(WhiteStrip(i,BoolOperation(space,mode='opposit')),value,sense=False): return False
                 return True
             elif isinstance(index,int) and len(src) > abs(index):
-                if _IsIn_(WhiteStrip(src[index],BoolOperation(space,mode='opposit')),value,sense=False,Type=Type): return True
+                if _IsIn_(WhiteStrip(src[index],BoolOperation(space,mode='opposit')),value,sense=False): return True
         elif isinstance(src,dict):
             if index in src:
-                if _IsIn_(WhiteStrip(src[index],BoolOperation(space,mode='opposit')),value,sense=False,Type=Type): return True
+                if _IsIn_(WhiteStrip(src[index],BoolOperation(space,mode='opposit')),value,sense=False): return True
     if chk_only:
         # i want check Type then different type then return True
-        if Type:
+        if _type_:
             #if TypeName(src) != TypeName(CheckType): return True
             return False if Type(src,CheckType) else True
         return False
     if not isinstance(src,(bool,int)):
         if not src: return True
     # i want check Type then different type then return True
-    if Type:
+    if _type_:
         #if TypeName(src) != TypeName(CheckType): return True
         return False if Type(src,CheckType) else True
     return False
