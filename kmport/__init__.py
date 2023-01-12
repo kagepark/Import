@@ -756,7 +756,7 @@ def Found(data,find,digitstring=False,word=False,white_space=True,sense=True,loc
         return _Found_(data,find,word,sense,location)
     return data == find
 
-def IsSame(src,dest,sense=False,order=False,digitstring=True,white_space=False,**opts):
+def IsSame(src,dest,sense=False,order=False,_type_=False,digitstring=True,white_space=False):
     '''
     return True/False
     Check same data or not between src and dest datas
@@ -775,7 +775,6 @@ def IsSame(src,dest,sense=False,order=False,digitstring=True,white_space=False,*
     '''
 #    src_type=TypeName(src)
 #    dest_type=TypeName(dest)
-    _type_=opts.get('Type',opts.get('type',opts.get('_type_',False)))
     if _type_ is True: # If check type only
         return Type(src,dest)
 #        if src_type == 'unknown' and dest_type == 'unknown':
@@ -816,7 +815,7 @@ def IsSame(src,dest,sense=False,order=False,digitstring=True,white_space=False,*
             for j in range(0,len(src)):
                 for i in range(0,len(dest)):
                     if (isinstance(src[j],dict) and isinstance(dest[j],dict)) or (isinstance(src[j],(list,tuple)) and isinstance(dest[j],(list,tuple))):
-                        if IsSame(src[j],dest[i],sense,order,Type,digitstring,white_space):
+                        if IsSame(src[j],dest[i],sense,order,_type_,digitstring,white_space):
                             a[j]=None
                             b[i]=None
                     elif Found(src[j],dest[i],digitstring=digitstring,white_space=white_space,sense=sense):
@@ -830,7 +829,7 @@ def IsSame(src,dest,sense=False,order=False,digitstring=True,white_space=False,*
         for j in src:
             if j in dest:
                 if (isinstance(src[j],dict) and isinstance(dest[j],dict)) or (isinstance(src[j],(list,tuple)) and isinstance(dest[j],(list,tuple))):
-                    if not IsSame(src[j],dest[i],sense,order,Type,digitstring,white_space): return False
+                    if not IsSame(src[j],dest[i],sense,order,_type_,digitstring,white_space): return False
                 else:
                     if not Found(src[j],dest[j],digitstring=digitstring,white_space=white_space,sense=sense): return False
         return True
