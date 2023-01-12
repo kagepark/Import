@@ -2157,7 +2157,7 @@ def Get(*inps,**opts):
         if not Type(obj,_type):
             return Default(obj,default)
     ok,nidx=IndexForm(idx,idx_only=idx_only)
-    idx_type=TypeName(nidx)
+    idx_type=type(nidx).__name__
     if obj == '_this_':
         obj_type='function'
     else:
