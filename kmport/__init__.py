@@ -440,16 +440,16 @@ def TypeName(obj):
     obj_name=type(obj).__name__
     if obj_name in ['function']: return obj_name
     if obj_name in ['str']:
-        try:
-            obj_tmp=eval(obj)
-            if type(obj_tmp).__name__ not in ['module','classobj','function','response','request']:
-                obj_name=eval(obj).__name__
-                if obj_name.lower() == obj.lower(): return obj.lower()
-        except:
-            if obj.lower() in ['module','classobj','function','unknown','response','request']:
-                return obj.lower()
-            elif obj in ['kDict','kList','DICT']: # Special case name
-                return obj
+        #try:
+        #    obj_tmp=eval(obj)
+        #    if type(obj_tmp).__name__ not in ['module','classobj','function','response','request']:
+        #        obj_name=eval(obj).__name__
+        #        if obj_name.lower() == obj.lower(): return obj.lower()
+        #except:
+        #    if obj.lower() in ['module','classobj','function','unknown','response','request']:
+        #        return obj.lower()
+        #    elif obj in ['kDict','kList','DICT']: # Special case name
+        #        return obj
         return 'str'
     if '__dict__' in obj_dir:
         if obj_name == 'type': return 'classobj'
@@ -469,6 +469,7 @@ def Type(*inps,**opts):
     support : basic type and ('byte','bytes'),('obj','object'),('func','unboundmethod','function'),('classobj','class'),'generator','method','long',....
     '''
     def NameFix(i):
+        if i == str: return 'str'
         if i in ['byte','bytes']: return 'bytes'
         if i in ['obj','object']: return 'object'
         if i in ['func','unboundmethod']: return 'function'
@@ -485,15 +486,16 @@ def Type(*inps,**opts):
         return i
     inps_l=len(inps)
     if inps_l == 0:
-        print('minimum over 1 requirement')
+        StdErr('minimum over 1 requirement')
         return
     obj_type=TypeName(inps[0])
     if inps_l == 1: return obj_type
     for check in inps[1:]:
         if isinstance(check,(tuple,list)):
             for i in check:
-                i=NameFix(i)
+                #i=NameFix(i)
                 check_type=TypeName(i)
+                if check_type == 'str': check_type=NameFix(i)
                 #check_type=i if a == 'str' else a
                 if obj_type == check_type:
                     if opts.get('data'):
@@ -501,8 +503,10 @@ def Type(*inps,**opts):
                             return False
                     return True
         else:
-            check=NameFix(check)
+            #check=NameFix(check)
             check_type=TypeName(check)
+            if check_type == 'str':
+                check_type=NameFix(check)
             if obj_type == check_type:
                 if opts.get('data'):
                     if IsNone(inps[0]):
@@ -752,7 +756,7 @@ def Found(data,find,digitstring=False,word=False,white_space=True,sense=True,loc
         return _Found_(data,find,word,sense,location)
     return data == find
 
-def IsSame(src,dest,sense=False,order=False,Type=False,digitstring=True,white_space=False,**opts):
+def IsSame(src,dest,sense=False,order=False,digitstring=True,white_space=False,**opts):
     '''
     return True/False
     Check same data or not between src and dest datas
@@ -769,23 +773,27 @@ def IsSame(src,dest,sense=False,order=False,Type=False,digitstring=True,white_sp
        white_space          : True: keep white space, False:(default) ignore white_space
        digitstring          : True:(default) string and intiger is same, False: different
     '''
-    src_type=TypeName(src)
-    dest_type=TypeName(dest)
-    if Type is True: # If check type only
-        if src_type == 'unknown' and dest_type == 'unknown':
-            return type(src) == type(dest)
-        return src_type == dest_type
-    if src_type in ['str','bytes'] and dest_type in ['str','bytes']:# and dest:
-        tobyte=True if dest_type == 'bytes' or src_type == 'bytes' else False
-        if tobyte:
+#    src_type=TypeName(src)
+#    dest_type=TypeName(dest)
+    _type_=opts.get('Type',opts.get('type',opts.get('_type_',False)))
+    if _type_ is True: # If check type only
+        return Type(src,dest)
+#        if src_type == 'unknown' and dest_type == 'unknown':
+#            return type(src) == type(dest)
+#        return src_type == dest_type
+#    if src_type in ['str','bytes'] and dest_type in ['str','bytes']:# and dest:
+    if Type(src,('str','bytes')) and Type(dest,('str','bytes')):# and dest:
+#        tobyte=True if dest_type == 'bytes' or src_type == 'bytes' else False
+#        if tobyte:
+        if Type(dest,'bytes') or Type(src,'bytes'):
             src=Bytes(src)
             dest=Bytes(dest)
             if src == dest: return True
             if dest:
                 if dest[0] != b'^': dest=b'^'+dest
                 if dest[-1] != b'$': dest=dest+b'$'
-            src_type='bytes'
-            dest_type='bytes'
+#            src_type='bytes'
+#            dest_type='bytes'
         else:
             src=Str(src)
             dest=Str(dest)
@@ -793,8 +801,8 @@ def IsSame(src,dest,sense=False,order=False,Type=False,digitstring=True,white_sp
             if dest:
                 if dest[0] != '^': dest='^'+dest
                 if dest[-1] != '$': dest=dest+'$'
-            src_type='str'
-            dest_type='str'
+#            src_type='str'
+#            dest_type='str'
     if isinstance(src,(list,tuple)) and isinstance(dest,(list,tuple)):
         if sense and order: return src == dest
         if len(src) != len(dest): return False
@@ -833,12 +841,15 @@ def IsIn(find,dest,idx=False,default=False,sense=False,startswith=True,endswith=
     '''
     Check key or value in the dict, list or tuple then True, not then False
     '''
-    dest_type=TypeName(dest)
-    if dest_type in ['list','tuple','str','bytes']:
-        if TypeName(idx) == 'int':
+    #dest_type=TypeName(dest)
+    #if dest_type in ['list','tuple','str','bytes']:
+    if Type(dest,('list','tuple','str','bytes')):
+        #if TypeName(idx) == 'int':
+        if Type(idx,'int'):
             idx=FixIndex(dest,idx,default=False,err=True)
             if idx is False: return default
-            if dest_type in ['str','bytes']:
+            #if dest_type in ['str','bytes']:
+            if Type(dest,('str','bytes')):
                 if Found(dest[idx:],find,digitstring,word,white_space,sense): return True
             else:
                 if Found(dest[idx],find,digitstring,word,white_space,sense): return True
@@ -921,13 +932,15 @@ def IsNone(src,**opts):
     if chk_only:
         # i want check Type then different type then return True
         if Type:
-            if TypeName(src) != TypeName(CheckType): return True
+            #if TypeName(src) != TypeName(CheckType): return True
+            return False if Type(src,CheckType) else True
         return False
     if not isinstance(src,(bool,int)):
         if not src: return True
     # i want check Type then different type then return True
     if Type:
-        if TypeName(src) != TypeName(CheckType): return True
+        #if TypeName(src) != TypeName(CheckType): return True
+        return False if Type(src,CheckType) else True
     return False
 
 def IsVar(src,obj=None,default=False,mode='all',parent=0):
@@ -1117,13 +1130,12 @@ def CompVersion(*inp,**opts):
                 return -1
         return 0
     def MkVerList(src,version_symbol):
-        src_type=TypeName(src)
-        if src_type=='dict': src=src.get('version',src.get('__version__'))
-        if src_type in ['str','bytes']:
+        if isinstance(src,dict): src=src.get('version',src.get('__version__'))
+        if Type(src,('str','bytes')):
             src=Str(src).split(version_symbol)
-        elif src_type in ('int','float'):
+        elif Type(src,('int','float')):
             src=[src]
-        elif src_type == 'tuple':
+        elif isinstance(src, tuple):
             src=list(src)
         if isinstance(src,list):
             return tuple(_clean_([ Int(i) for i in src ]))
@@ -3028,10 +3040,9 @@ def rshell(cmd,timeout=None,ansi=True,path=None,progress=False,progress_pre_new_
         return p.returncode, ansi_escape.sub('',out).rstrip(), ansi_escape.sub('',err).rstrip(),start_time.Init(),start_time.Now(int),cmd,path
 
 def IsCancel(func):
-    func_type=TypeName(func)
-    if func_type in ['function','instancemethod','method']:
+    if Type(func,('function','instancemethod','method')):
         if func(): return True
-    elif func_type in ['bool','str'] and func in [True,'cancel']:
+    elif Type(func,('bool','str')) and func in [True,'cancel','revoke']:
         return True
     return False
 
@@ -3197,7 +3208,7 @@ def MacV4(src,**opts):
         return ':'.join(['{}{}'.format(a, b) for a, b in zip(*[iter('{:012x}'.format(src))]*2)])
     def str2int(src):
         return int(src.lower().replace('-','').replace(':',''), 16)
-    if TypeName(src) == 'bytes': 
+    if Type(src,'bytes'): 
         if len(src) == 6: # format b'\x00\xde4\xef.\xf4'
             src=codecs.encode(src,'hex')  # format b'00de34ef2ef4'
         src=Str(src)
@@ -3485,20 +3496,19 @@ def rm(*args,**opts):
     if len(args) <= 0: return opts.get('default')
     #List/Tuple
     if Type(args[0],(list,tuple)):
-        tt=TypeName(args[0])
         rt=list(args[0])
         del_data=opts.get('value',opts.get('data',False))
         if del_data:
             for i in args[1:]:
                 if i in rt: rt.remove(i)
-            if tt == 'tuple': return tuple(rt)
+            if Type(args[0],'tuple'): return tuple(rt)
             return rt
         else:
             tmp=[]
             for i in range(0,len(rt)):
                 if i in args[1:]: continue
                 tmp.append(rt[i])
-            if tt == 'tuple': return tuple(tmp)
+            if Type(args[0],'tuple'): return tuple(tmp)
             return tmp
     #Dict
     elif Type(args[0],dict):
@@ -3728,10 +3738,9 @@ def Replace(src,replace_what,replace_to,default=None,newline='\n'):
                     t.append(src[p[i][1]:])
             return t
 
-    src_type=TypeName(src)
-    if not src_type in ['str','bytes']:
+    if not Type(src,('str','bytes')):
         return Default(src,default)
-    if src_type == 'bytes':
+    if Type(src,'bytes'):
         replace_what=Bytes(replace_what)
         replace_to=Bytes(replace_to)
         newline=Bytes(newline)
@@ -3842,8 +3851,7 @@ def FeedFunc(obj,*inps,**opts):
     if something wrong then return False
     if correct then return output of ran the Function with inputs
     '''
-    obj_type=TypeName(obj)
-    if obj_type == 'str' and not inspect.isclass(obj): # for str class
+    if Type(obj,'str') and not inspect.isclass(obj): # for str class
         mymod=MyModule(default=False,parent=1)
         if mymod is False:
             mymod=MyModule(default=False,parent=0)
@@ -3852,22 +3860,21 @@ def FeedFunc(obj,*inps,**opts):
         if Type(mymod,'module'):
             try:
                 obj=getattr(mymod,obj,None)
-                obj_type=TypeName(obj)
             except:
                 StdErr('Function name "{}" not found in the module\n'.format(obj))
                 return False
-    if obj_type in ('function','builtin_function_or_method','type','int','str','list','dict'):
+    if Type(obj,('function','builtin_function_or_method','type','int','str','list','dict')):
         fcargs=FunctionArgs(obj,mode='detail',default={})
         ninps=[]
         nopts={}
         #Special case int,str,list,dict
-        if obj_type in ['int','str','list','dict']:
+        if Type(obj, ('int','str','list','dict')):
             if inps: ninps.append(inps[0])
             if 'base' in opts: #int()
                 nopts['base']=opts['base']
             if 'encoding' in opts: # str()
                 nopts['encoding']=opts['encoding']
-            elif obj_type == 'str' and ninps and Type(ninps[0],'bytes') and 'encoding' not in opts: # str()
+            elif Type(obj,'str') and ninps and Type(ninps[0],'bytes') and 'encoding' not in opts: # str()
                 nopts['encoding']='ascii'
         idx=0
         if 'args' in fcargs:
@@ -3893,12 +3900,12 @@ def FeedFunc(obj,*inps,**opts):
             nopts.update(opts)
         #Run function with found arguments
         if ninps and nopts:
-            if obj_type in ['int','str']:
+            if Type(obj,('int','str')):
                 return obj(ninps[0],**nopts)
             else:
                 return obj(*ninps,**nopts)
         elif ninps:
-            if obj_type in ['int','str','list','dict']:
+            if Type(obj,('int','str','list','dict')):
                 return obj(ninps[0])
             else:
                 return obj(*ninps)
@@ -4028,12 +4035,11 @@ def ColorStr(msg,**opts):
 
 def CleanAnsi(data):
     ansi_escape = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')
-    data_type=TypeName(data)
-    if data_type in ['str','bytes']:
+    if Type(data,('str','bytes')):
         return ansi_escape.sub('',Str(data))
-    elif data_type in ('list','tuple'):
+    elif isinstance(data,(list,tuple)):
         return [CleanAnsi(ii) for ii in data]
-    elif data_type == 'dict':
+    elif isinstance(data,dict):
         for i in data:
             data[i]=CleanAnsi(data[i])
     return data
@@ -4058,20 +4064,25 @@ def cli_input(msg,**opts):
 
 def TypeData(src,want_type=None,default='org',spliter=None):
     '''Convert (input)data to want type (ex: str -> list, int, ...), can not convert to type then return False'''
-    want_type=TypeName(want_type)
-    if want_type == 'str':
+    if Type(want_type,'str'):
         if isinstance(src,(list,tuple)):
             if not isinstance(spliter,str): spliter=' '
-            return Join(src,spliter)
+            return Join(Str(src),Str(spliter))
         else:
             return Str(src,mode='force')
-    elif want_type == 'int':
+    elif Type(want_type,'bytes'):
+        if isinstance(src,(list,tuple)):
+            if not isinstance(spliter,str): spliter=b' '
+            return Join(Bytes(src),Bytes(spliter))
+        else:
+            return Bytes(src)
+    elif Type(want_type,'int'):
         return Int(src,err=True)
-    elif want_type in ['list','tuple'] and isinstance(src,str) and isinstance(spliter,str):
-        if want_type == 'tuple':
+    elif Type(want_type,('list','tuple')) and isinstance(src,str) and isinstance(spliter,str):
+        if Type(want_type,'tuple'):
             return tuple(Split(src,spliter))
         return Split(src,spliter)
-    elif want_type == 'tuple' and isinstance(src,(list,dict)):
+    elif Type(want_type,'tuple') and isinstance(src,(list,dict)):
         if isinstance(src,dict):
             if spliter == 'key':
                 return tuple(src.keys())
@@ -4080,7 +4091,7 @@ def TypeData(src,want_type=None,default='org',spliter=None):
             else:
                 return tuple(src.items())
         return tuple(src)
-    elif want_type == 'list' and isinstance(src,(tuple,dict)):
+    elif Type(want_type,'list') and isinstance(src,(tuple,dict)):
         if isinstance(src,dict):
             if spliter == 'key':
                 return list(src.keys())
@@ -4091,7 +4102,7 @@ def TypeData(src,want_type=None,default='org',spliter=None):
         return list(src)
     elif Type(src,want_type):
         return src
-    if isinstance(src,str):
+    if Type(src,('str','bytes')):
         return FormData(src,default='org')
     return Default(src,default)
 
