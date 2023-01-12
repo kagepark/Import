@@ -2115,6 +2115,13 @@ def Get(*inps,**opts):
       err     : False, if any error then ignore the data
       idx_only: if input data is dictionary then convert dictionary's keys to input data. So, int idx can get keys(list) name
       _type_  : define to input data's data format (ex: (list,tuple))
+      method  : if input is request then can define method('GET','POST',...)
+      strip   : default: False, it can strip white space
+      peel    : 
+          force: just take first data in the list,tuple (if data format has any form also OK, just return the data)
+          True : single data(list,tuple,dict) then peel to data (if data format is list,tuple,dict... then return default)
+          False: return founded data (any format)
+      out     : define to output data (list-> output will list, ...), if wrong format then return default
     '''
     default=opts.get('default')
     err=opts.get('err',opts.get('error',False))
@@ -2123,6 +2130,7 @@ def Get(*inps,**opts):
     _type=opts.get('_type_',opts.get('type'))
     out=opts.get('out',opts.get('out_form','raw'))
     peel=opts.get('peel')
+    strip=opts.get('strip',False)
 
     if len(inps) == 0:
         return Default(inps,default)
@@ -2191,7 +2199,7 @@ def Get(*inps,**opts):
                     rt.append(obj[ix])
                 elif fill_up != '_fAlsE_':
                     rt.append(fill_up)
-            return OutFormat(rt,out=out,default=default,org=obj,peel=peel)
+            return OutFormat(rt,out=out,default=default,org=obj,peel=peel,strip=strip)
         elif idx_type == 'int':
             ix=_max_(obj,nidx,err)
             if Type(ix,int): return obj[ix]
@@ -2216,7 +2224,7 @@ def Get(*inps,**opts):
                     else:
                         t=obj.get(i)
                         if t is not None: rt.append(t)
-                return OutFormat(rt,out=out,default=default,org=obj,peel=peel)
+                return OutFormat(rt,out=out,default=default,org=obj,peel=peel,strip=strip)
             else:
                 if idx_only:
                     ix=_max_(obj_items,Int(idx),err)
@@ -2253,7 +2261,7 @@ def Get(*inps,**opts):
                             rt.append(Variable(nidx,parent=1))
                         else:
                             rt.append(Variable(nidx,obj))
-                return OutFormat(rt,out=out,default=default,org=obj,peel=peel)
+                return OutFormat(rt,out=out,default=default,org=obj,peel=peel,strip=strip)
     elif obj_type in ('instance','classobj','module'):
         if Type(idx,str) and idx.lower() in ['func','function','functions','funclist','func_list','list']:
             return FunctionList(obj)
@@ -2268,7 +2276,7 @@ def Get(*inps,**opts):
                             rt=rt+MethodInClass(obj)
                     else:
                         rt.append(getattr(obj,ff,default))
-            return OutFormat(rt,out=out,default=default,org=obj,peel=peel)
+            return OutFormat(rt,out=out,default=default,org=obj,peel=peel,strip=strip)
         elif idx_type == 'str':
             if obj_type == 'classobj': obj=obj() # move CLASS to CLASS()
             return getattr(obj,nidx,Default(obj,default))
@@ -2299,7 +2307,7 @@ def Get(*inps,**opts):
                 rt=[]
                 for ikey in nidx:
                     rt.append(_web_(obj,ikey))
-                return OutFormat(rt,out=out,default=default,org=obj,peel=peel)
+                return OutFormat(rt,out=out,default=default,org=obj,peel=peel,strip=strip)
     elif obj_type in ('request'): # Web Data2
         rt=[]
         method=opts.get('method',None)
@@ -2317,7 +2325,7 @@ def Get(*inps,**opts):
                 elif method=='FILE':
                     rt=obj.FILES.getlist(nkey,default)
                     if not IsNone(rt):
-                        return OutFormat(rt,out='raw',peel=peel)
+                        return OutFormat(rt,out='raw',peel=peel,strip=strip,default=default)
                     #if not IsNone(rt): return rt
                     #rt=obj.FILES.get(nkey,default)
                     #if not IsNone(rt): return rt
@@ -2326,11 +2334,11 @@ def Get(*inps,**opts):
                     rt=obj.FILES.getlist(nkey)
                     #rt2=obj.FILES.get(nkey)
                     if not IsNone(rt):
-                        return OutFormat(rt,out='raw',peel=peel)
+                        return OutFormat(rt,out='raw',peel=peel,strip=strip,default=default)
                     rt=obj.POST.getlist(nkey)
                     #rt=obj.POST.get(nkey)
                     if not IsNone(rt):
-                        return OutFormat(rt,out='raw',peel=peel)
+                        return OutFormat(rt,out='raw',peel=peel,strip=strip,default=default)
                     return Default(obj,default)
             if idx_type == 'str':
                 return _web_data(obj,nidx,method,default)
@@ -2338,7 +2346,7 @@ def Get(*inps,**opts):
                 rt=[]
                 for i in nidx:
                     rt.append(_web_data(obj,i,method,default))
-                return OutFormat(rt,out=out,default=default,org=obj,peel=peel)
+                return OutFormat(rt,out=out,default=default,org=obj,peel=peel,strip=strip)
     elif obj_type in ('ImmutableMultiDict'): # Flask Web Data
         tmp={}
         if obj:
@@ -2347,7 +2355,7 @@ def Get(*inps,**opts):
         return Get(tmp,idx,default,err) 
     elif obj_type in ('kDict','kList','DICT'): 
         return Get(obj.Get(),idx,default,err) 
-    return OutFormat([],out=out,default=default,org=obj,peel=peel)
+    return OutFormat([],out=out,default=default,org=obj,peel=peel,strip=strip)
 
 
 def TryCode(code,default=False,_return_=True):
