@@ -1264,35 +1264,36 @@ def Install(module,install_account='',mode=None,upgrade=False,version=None,force
         install_cmd=[sys.executable,'-m','pip','install']
     else:
         install_cmd=['python3','-m','pip','install']
-    ipkgs=working_set
-    pkn=ipkgs.__dict__.get('by_key',{}).get(install_name)
-    if pkn:
-        if version:
-            for i in range(len(version)-1,0,-1):
-                if version[i] in ['>','<','=']: break
-            ver_str=version[i+1:]
-            compare_symbol=version[:i+1]
-            if not CompVersion(pkn.version,compare_symbol,ver_str):
-                upgrade=True
-                install_cmd.append(install_name+version)
+    if PyVer(3,8,'<'): 
+        import pkg_resources
+        pkn=pkg_resources.working_set.__dict__.get('by_key',{}).get(install_name)
+        if pkn:
+            if version:
+                for i in range(len(version)-1,0,-1):
+                    if version[i] in ['>','<','=']: break
+                ver_str=version[i+1:]
+                compare_symbol=version[:i+1]
+                if not CompVersion(pkn.version,compare_symbol,ver_str):
+                    upgrade=True
+                    install_cmd.append(install_name+version)
+                else:
+                    return True
             else:
-                return True
-        else:
-            install_cmd.append(install_name)
-        if force: install_cmd.append('--force-reinstall')
-        if install_account: install_cmd.append(install_account)
-        if not force and upgrade: install_cmd.append('--upgrade')
-        if pip_main and force or upgrade:
-            if err:
-                if pip_main(install_cmd) == 0: return True
-                return False
-            else:
-                try:
+                install_cmd.append(install_name)
+            if force: install_cmd.append('--force-reinstall')
+            if install_account: install_cmd.append(install_account)
+            if not force and upgrade: install_cmd.append('--upgrade')
+            if pip_main and force or upgrade:
+                if err:
                     if pip_main(install_cmd) == 0: return True
                     return False
-                except:
-                    return False
-        return True
+                else:
+                    try:
+                        if pip_main(install_cmd) == 0: return True
+                        return False
+                    except:
+                        return False
+            return True
 
 #    if mode == 'git':
 #        git.Repo.clone_from(module,'/tmp/.git.tmp',branch='master')
@@ -2624,7 +2625,6 @@ def ping(host,**opts):
             return delay,size
 
     def do_ping(ip,timeout=1,size=64,count=None,interval=0.7,log_format='ping',cancel_func=False):
-        if not IpV4(ip): return 1,'Wrong IP({})'.format(ip)
         ok=1
         i=1
         ping_cmd=find_executable('ping')
@@ -2666,7 +2666,6 @@ def ping(host,**opts):
     else:
         if alive_port:
             return True if IpV4(host,port=alive_port) else False
-        if not IpV4(host): return False
         Time=TIME()
         init_sec=0
         infinit=False
