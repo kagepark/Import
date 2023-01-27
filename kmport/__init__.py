@@ -2625,6 +2625,7 @@ def ping(host,**opts):
             return delay,size
 
     def do_ping(ip,timeout=1,size=64,count=None,interval=0.7,log_format='ping',cancel_func=False):
+        if not IpV4(ip): return 1,'Wrong IP({})'.format(ip)
         ok=1
         i=1
         ping_cmd=find_executable('ping')
@@ -2666,6 +2667,7 @@ def ping(host,**opts):
     else:
         if alive_port:
             return True if IpV4(host,port=alive_port) else False
+        if not IpV4(host): return False
         Time=TIME()
         init_sec=0
         infinit=False
