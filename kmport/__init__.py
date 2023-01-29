@@ -44,7 +44,13 @@ def Global():
     '''
     Method's global variables
     '''
-    return dict(inspect.getmembers(inspect.stack()[-1][0]))["f_globals"]
+    #return dict(inspect.getmembers(inspect.stack()[-1][0]))["f_globals"]
+    z=0
+    for ii in inspect.stack():
+        if '<module>' in ii: break
+        z+=1
+    return dict(inspect.getmembers(inspect.stack()[z][0]))["f_globals"]
+
 
 def StdOut(msg):
     '''
@@ -64,7 +70,10 @@ def StdErr(msg):
     '''
     Standard Error Print without new line symbol
     '''
-    sys.stderr.write(msg)
+    try:
+        sys.stderr.write(msg)
+    except:
+        sys.stderr.write('Wrong Error data format\n')
     sys.stderr.flush()
 
 def PyVer(*ver,**opts):
