@@ -67,28 +67,35 @@ def StdErr(msg):
     sys.stderr.write(msg)
     sys.stderr.flush()
 
-def PyVer(main=None,miner=None,msym=None):
+def PyVer(*ver,**opts):
     '''
     python version check
     '''
-    if isinstance(main,int):
-        if main == sys.version_info[0]:
-            if isinstance(miner,int):
-                if msym:
-                    if msym == '>=':
-                        if sys.version_info[1] >= miner: return True
-                    elif msym == '>':
-                        if sys.version_info[1] > miner: return True
-                    elif msym == '<=':
-                        if sys.version_info[1] <= miner: return True
-                    elif msym == '<':
-                        if sys.version_info[1] < miner: return True
-                if miner == sys.version_info[1]:return True
+    cver=None
+    msym=None
+    if len(ver) > 0:
+        if ver[0] in ['=','==','>','<','>=','<=','!=']:
+            msym=ver[0]
+        else:
+            cver='{}'.format(ver[0])
+        if len(ver) > 1:
+            if msym:
+                cver='{}'.format(ver[1])
+            elif ver[1] in ['=','==','>','<','>=','<=','!=']:
+                msym=ver[1]
+    if cver is None:
+        if opts.get('main'): cver='{}'.format(opts.get('main'))
+        if cver and opts.get('miner') and '.' not in cver: cver='{}.{}'.format(cver,opts.get('miner'))
+    if cver is None: return '{}.{}'.format(sys.version_info[0],sys.version_info[1])
+    if msym is None: msym=opts.get('msym','==')
+    if msym=='=': msym='=='
+    cver_a=cver.split('.')
+    cver_l=len(cver_a)
+    for x in range(0,len(sys.version_info)):
+        if x < cver_l:
+            if not eval('{} {} {}'.format(sys.version_info[x],msym,cver_a[x])):
                 return False
-            return True
-        return False
-    else:
-        return '{}.{}'.format(sys.version_info[0],sys.version_info[1])
+    return True
 
 def find_executable(executable,path=None):
     if not Type(executable,'str',data=True): return None
@@ -242,6 +249,11 @@ def Str(src,**opts):
     return src
 
 def Default(a,b=None):
+    '''
+    Make a return value
+    b is org then return original value a
+    if b not org then return b 
+    '''
     if b in ['org',{'org'}]:
         return a
     return b
@@ -839,6 +851,23 @@ def IsSame(src,dest,sense=False,order=False,_type_=False,digitstring=True,white_
 def IsIn(find,dest,idx=False,default=False,sense=False,startswith=True,endswith=True,digitstring=True,word=True,white_space=False,order=False,**opts):
     '''
     Check key or value in the dict, list or tuple then True, not then False
+    return True/False
+    Check same data or not between src and dest datas
+    <dest> rule:
+       re.compile format
+       any keep characters  : *
+       any single character : ?
+       ^                    : start
+       $                    : end
+    <option>
+       order                : True: if list,tuple then check ordering too, False:(default) just check data is same or not
+       startswith           : True:(default) Find "^ABC" type, False: according to <dest>
+       endswith             : True:(default) Find "ABC$" type, False: according to <dest>
+       Type                 : True: check Type only, False:(default) check data
+       sense                : True: sensetive, False:(default) lower and upper is same
+       white_space          : True: keep white space, False:(default) ignore white_space
+       word                 : True:(default) <find> is correct word, False: <find> in insde string
+       digitstring          : True:(default) string and intiger is same, False: different
     '''
     _type_=opts.get('Type',opts.get('_type_',False))
     #dest_type=TypeName(dest)
@@ -2950,7 +2979,175 @@ class TIME:
     def Datetime(self):
         return datetime()
 
-def rshell(cmd,timeout=None,ansi=True,path=None,progress=False,progress_pre_new_line=False,progress_post_new_line=False,log=None,progress_interval=5,cd=False,default_timeout=3600):
+def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin/bash',path=None,progress=False,progress_pre_new_line=False,progress_post_new_line=False,log=None,env={},full_path=None,remove_path=None,remove_all_path=None,default_timeout=3600,env_out=False):
+    '''
+    Interactive shell
+    path: append the path to existing system path
+    full_path: exchange the full_path to system path
+    remove_path: remove front remove_path at full_path
+    remove_all_path: remove remove_all_path in full_path
+    '''
+    # OS environments
+    os_env=dict(os.environ)
+    if env and isinstance(env,dict):
+        for ii in env:
+            if ii in os_env:
+                os_env[ii]=env[ii]
+
+    def pprog(stop,progress_pre_new_line=False,progress_post_new_line=False,log=None,progress_interval=5):
+        for i in range(0,progress_interval*10):
+            time.sleep(0.1)
+            if stop():
+                return
+        if progress_pre_new_line:
+            if log:
+                log('\n',direct=True,log_level=1)
+            else:
+                StdOut('\n')
+        post_chk=False
+        i=0
+        while True:
+            if stop(): break
+            if i > progress_interval*10:
+                i=0
+                if log:
+                    log('>',direct=True,log_level=1)
+                else:
+                    StdOut('>')
+                post_chk=True
+            i+=1
+            time.sleep(0.1)
+        if post_chk and progress_post_new_line:
+            if log:
+                log('\n',direct=True,log_level=1)
+            else:
+                StdOut('\n')
+
+    start_time=TIME()
+    if not Type(cmd,'str',data=True):
+        return -1,'wrong command information :{0}'.format(cmd),'',start_time.Init(),start_time.Init(),start_time.Now(int),cmd,path
+
+    ansi_escape = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')
+    Popen=subprocess.Popen
+    PIPE=subprocess.PIPE
+    STDOUT=subprocess.PIPE
+    out,err='',''
+    exe_name=os.path.basename(executable) if executable else os.path.basename(os_env.get('SHELL','bash'))
+    if dbg:
+        if exec_name in ['bash','sh']:
+            cmd='set -x\n' + cmd
+    if isinstance(remove_path,str) and len(remove_path) > 0 :
+        if not full_path: full_path=os.environ['PATH']
+        full_path_a=full_path.split(':')
+        for ii in remove_path.split(':'):
+            if ii in full_path_a:
+                full_path_a.remove(ii)
+        full_path=':'.join(full_path_a)
+    elif isinstance(remove_all_path,str) and len(remove_all_path) > 0 :
+        if not full_path: full_path=os.environ['PATH']
+        full_path_a=full_path.split(':')
+        for ii in remove_all_path.split(':'):
+            full_path_a=[i for i in full_path_a if i != ii]
+        full_path=':'.join(full_path_)
+    if full_path:
+        if exe_name in ['csh','tcsh']:
+            cmd='''setenv PATH "%s"; %s'''%(full_path,cmd)
+        else:
+            cmd='''export PATH=%s; %s'''%(full_path,cmd)
+    elif isinstance(path,str) and len(path) > 0:
+        if exe_name in ['csh','tcsh']:
+            cmd='''setenv PATH "%s:${PATH}"; %s'''%(path,cmd)
+        else:
+            cmd='''export PATH=%s:${PATH}; %s'''%(path,cmd)
+    else:
+        cmd_a=cmd.split()
+        cmd_file=cmd_a[0]
+        if cmd_file[0] != '/' and cmd_file == os.path.basename(cmd_file) and os.path.isfile(cmd_file):
+            cmd='./'+cmd
+    if executable:
+        if not os.path.isfile(executable):
+            executable=find_executable(exe_name)
+    p = Popen(cmd , shell=True, stdout=PIPE, stderr=STDOUT,executable=executable, env=os_env)
+
+    #Need error log out from thread to output
+    def write_err(p):
+       while True:
+           ee=p.stderr.read(1)
+           if not ee: break
+           if isinstance(ee,bytes):
+              sys.stderr.buffer.write(ee) # write bytes data to stdout
+           else:
+              sys.stderr.write(ee) # write bytes data to stdout
+           sys.stderr.flush()
+
+    if interactive:
+       ########### STD Error
+       err = Thread(target=write_err, args=(p,))
+       err.start()
+       ########### STD Out
+       while True:
+          d=p.stdout.read(1)
+          if not d: break
+          if isinstance(d,bytes):
+              sys.stdout.buffer.write(d) # write bytes data to stdout
+              #out+=d.decode('utf-8').replace('\r','')
+              out+=Str(d).replace('\r','')
+          else:
+              sys.stdout.write(d) # write str data to stdout
+              out+=d.replace('\r','')
+          sys.stdout.flush()
+       p.stdout.close()
+
+       ########### OLD STD Error, if starting from error log then can't see
+       #err=p.stderr.read()
+       #if err:
+       #   if isinstance(err,bytes):
+       #       sys.stderr.buffer.write(err)
+       #   else:
+       #       sys.stderr.write(err)
+       #   sys.stderr.flush()
+       #p.stderr.close()
+       p.wait()
+    else:
+       if progress:
+           stop_threads=False
+           ppth=Thread(target=pprog,args=(lambda:stop_threads,progress_pre_new_line,progress_post_new_line,log,))
+           ppth.start()
+
+       timeout=Int(timeout,default_timeout)
+       if timeout > 0:
+          if PyVer(3):
+             try:
+                out, err = p.communicate(timeout=timeout)
+             except subprocess.TimeoutExpired:
+                p.kill()
+                p.returncode=999
+                err='Error: Kill process after Timeout {0}'.format(timeout)
+          else:
+              otimeout='{}'.format(timeout)
+              while p.poll() is None and timeout > 0:
+                  time.sleep(0.1)
+                  timeout = timeout - 0.1
+              if p.poll() is None and timeout < 0:
+                  p.kill()
+                  p.returncode=999
+                  err='Error: Kill process after Timeout {0}'.format(otimeout)
+       if len(out) == 0 and len(err) == 0:
+           out, err = p.communicate()
+       if progress:
+          stop_threads=True
+          ppth.join()
+    if PyVer(3):
+        if Type(out,'bytes'): out=out.decode("ISO-8859-1").rstrip()
+        if Type(err,'bytes'): err=err.decode("ISO-8859-1").rstrip()
+    if ansi:
+        out=ansi_escape.sub('',out)
+        err=ansi_escape.sub('',err)
+    if env_out:
+        return p.returncode, out, err,start_time.Init(),start_time.Now(int),cmd,path,os_env
+    return p.returncode, out, err,start_time.Init(),start_time.Now(int),cmd,path
+
+def rshell_tmp(cmd,timeout=None,ansi=True,path=None,progress=False,progress_pre_new_line=False,progress_post_new_line=False,log=None,progress_interval=5,cd=False,default_timeout=3600):
     def Pprog(stop,progress_pre_new_line=False,progress_post_new_line=False,log=None,progress_interval=5):
         time.sleep(progress_interval)
         if stop():
@@ -3043,9 +3240,10 @@ def rshell(cmd,timeout=None,ansi=True,path=None,progress=False,progress_pre_new_
         return p.returncode, ansi_escape.sub('',out).rstrip(), ansi_escape.sub('',err).rstrip(),start_time.Init(),start_time.Now(int),cmd,path
 
 def IsCancel(func):
-    if Type(func,('function','instancemethod','method')):
+    ttt=type(func).__name__
+    if ttt in ['function','instancemethod','method']:
         if func(): return True
-    elif Type(func,('bool','str')) and func in [True,'cancel','revoke']:
+    elif ttt in ['bool','str'] and func in [True,'cancel']:
         return True
     return False
 
@@ -3118,6 +3316,25 @@ def sprintf(string,*inps,**opts):
     return True,string
 
 def Sort(src,reverse=False,func=None,order=None,field=None,base='key',sym=None):
+    '''
+    Sorting data
+    support list,tuple,dict format
+    reverse : reverse sort
+    func    : sorting key function (default None)
+    order   : sorting order method
+        None: default with sort() function
+        int : sort with integer
+        str : sort with ascii code
+        len : sort with data length
+    field   
+        None : default
+        <int>: sort with list's index number
+    base
+        key  : default, sort with key of dict 
+        value: Sort with value of dict
+    sym      : None (default)
+        <symbol> : if src is string then split with the sym
+    '''
     if isinstance(src,str) and not IsNone(sym): src=src.split(sym)
     if isinstance(src,dict) and base in ['data','value']:
         field=1
@@ -4050,6 +4267,7 @@ def CleanAnsi(data):
 def cli_input(msg,**opts):
     '''
     CLI Input command
+    hidden or passwd = True : input as password, False: (default) normal text input
     '''
     hidden=opts.get('hidden',opts.get('passwd',opts.get('password',False)))
     if hidden:
