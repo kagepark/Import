@@ -6,6 +6,7 @@ import sys
 import ast
 import json
 import time
+import random
 import shutil
 import codecs
 import socket
@@ -2988,7 +2989,7 @@ class TIME:
     def Datetime(self):
         return datetime()
 
-def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin/bash',path=None,progress=False,progress_pre_new_line=False,progress_post_new_line=False,log=None,env={},full_path=None,remove_path=None,remove_all_path=None,default_timeout=3600,env_out=False):
+def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin/bash',path=None,progress=False,progress_pre_new_line=False,progress_post_new_line=False,log=None,env={},full_path=None,remove_path=None,remove_all_path=None,default_timeout=3600,env_out=False,cd=False):
     '''
     Interactive shell
     path: append the path to existing system path
@@ -3037,9 +3038,9 @@ def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin
         return -1,'wrong command information :{0}'.format(cmd),'',start_time.Init(),start_time.Init(),start_time.Now(int),cmd,path
 
     ansi_escape = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')
-    Popen=subprocess.Popen
-    PIPE=subprocess.PIPE
-    STDOUT=subprocess.PIPE
+    Popen=subprocess_Popen
+    PIPE=subprocess_PIPE
+    STDOUT=subprocess_PIPE
     out,err='',''
     exe_name=os.path.basename(executable) if executable else os.path.basename(os_env.get('SHELL','bash'))
     if dbg:
@@ -3064,10 +3065,13 @@ def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin
         else:
             cmd='''export PATH=%s; %s'''%(full_path,cmd)
     elif isinstance(path,str) and len(path) > 0:
-        if exe_name in ['csh','tcsh']:
-            cmd='''setenv PATH "%s:${PATH}"; %s'''%(path,cmd)
+        if cd:
+            cmd='''cd %s && ./%s'''%(path,cmd)
         else:
-            cmd='''export PATH=%s:${PATH}; %s'''%(path,cmd)
+            if exe_name in ['csh','tcsh']:
+                cmd='''setenv PATH "%s:${PATH}"; %s'''%(path,cmd)
+            else:
+                cmd='''export PATH=%s:${PATH}; %s'''%(path,cmd)
     else:
         cmd_a=cmd.split()
         cmd_file=cmd_a[0]
@@ -4382,6 +4386,156 @@ def MoveData(src,data=None,to=None,from_idx=None,force=False,default='org'):
         elif src_type == 'str': return Join(src,'')
         return src
     return Default(src,default)
+
+def Random(length=8,mode=None,strs=None,**opts):
+    '''
+    make random number/string/characters
+    length   : random string length (default: 8)
+    mode (default: Alphanum)
+     - alpha : lower alphabet
+     - ALPHA : upper alphabet
+     - Alpha : lower + upper alphabet
+     - num   : number
+     - char  : linux console usable symbol characters
+     - sym   : all symbol characters
+     - combin above modes (ex: Alphanum)
+    strs     : if you want make a random string with your own special characters
+    '''
+    alpha='abcdefghijklmnopqrstuvwxyz'
+    Alpha='ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    num='0123456789'
+    symbol='''~!@#$%^_+-={}[]:,.'''
+    Symbol='''`*()&|\\';"/i<>?'''
+    space=' '
+    if not isinstance(strs,str) or not strs:
+        strs=''
+        if mode in ['all','*']:
+            strs=alpha+Alpha+num+symbol+Symbol+space
+        elif isinstance(mode,str):
+            if 'alpha' in mode: strs=alpha
+            if 'Alpha' in mode: strs=alpha+Alpha
+            if 'ALPHA' in mode: strs=Alpha
+            if 'num' in mode: strs=strs+num
+            if 'char' in mode: strs=strs+symbol
+            elif 'sym' in mode: strs=strs+symbol+Symbol+space
+    if not strs: strs=alpha+Alpha+num
+    strn=len(strs)-1
+    stra=list(strs)
+    out=[]
+    for i in range(0,length):
+        random.shuffle(stra)
+        out.append(stra[random.randint(0,strn)])
+    return int(''.join(out)) if mode == 'num' else ''.join(out)
+
+def IsAllSameStr(src,find):
+    '''Check input string is All same string or not'''
+    if isinstance(src,str) and isinstance(find,str):
+        if src.count(find) == len(src)/len(find):
+            return True
+    return False
+
+def MkTemp(filename=None,suffix=None,split='-',opt='dry',base_dir=None,uniq=False,default_length=8,mode=None,**opts):
+    '''
+    make a random string
+    filename: 
+      None  : generate random string
+      abc-XXXXX.log : abc-<random 5 characters>.log
+      abc-NNN-abcd.log   : abc-<random 3 numbers>-abcd.log
+      abc.log-XXXX  : abc.log-<random 4 characters>
+    suffix  : if you need adding file extand(suffix) (ex: suffix='log' => XXXXX.log)
+    split   : default -, split symbol for the filename
+    opt
+      - dry : dry run (return string)(default)
+      - file: make a file
+      - dir : make a directory
+    base_dir: if you want a string under base_dir
+    uniq    : if you want make a uniq string (not existing filename in the (base_dir)directory)
+      seirial increase number
+        if exist abc.log then abc.log-00000000
+        if exist abc.log,abc.log-00000000 then abc.log-00000001
+      filename='abc',suffix='log',uniq=True
+        if exist abc.log then abc-00000000.log
+        if exist abc.log,abc-00000000.log then abc-00000001.log
+    default_length: random string length
+    mode    : random string mode (same as Random()'s mode)
+    custom  : custom random string source (same as Random()'s strs parameter)
+    '''
+    #Support OLD MkTemp() 
+    if isinstance(suffix,str) and isinstance(filename,str):
+        if suffix[0]=='-':
+            if IsAllSameStr(suffix[1:],'X') or IsAllSameStr(suffix[1:],'N') or IsAllSameStr(suffix[1:],'x') or IsAllSameStr(suffix[1:],'n'):
+                default_length=len(suffix)-1
+                filename=filename+suffix.upper()
+    # New design
+    def outfile(filename,opt):
+        if opt in ['file','f']:
+           os.mknode(filename)
+        elif opt in ['dir','d','directory']:
+           os.mkdir(filename)
+        else:
+           return filename
+
+    def mk_filename(filename,split):
+        filename_a=filename.split(split)
+        filename_n=len(filename_a)
+        sss=None
+        for ff in range(0,filename_n):
+            for ss in ['N','X']:
+                if IsAllSameStr(filename_a[ff],ss):
+                    sss=ss
+                    if ff < filename_n-1:
+                        aa=Random(length=len(filename_a[ff]),mode='num' if sss == 'N' else mode,strs=opts.get('custom'))
+                        if isinstance(aa,int):
+                            filename_a[ff]='%0{}d'.format(len(filename_a[ff]))%aa
+                        else:
+                            filename_a[ff]='{}'.format(aa)
+        filename_last_suffix=filename_a[-1].split('.')[0]
+        filename_last_ext='.'.join(filename_a[-1].split('.')[1:])
+        if sss is None: sss=['N','X']
+        for ss in sss:
+            if IsAllSameStr(filename_last_suffix,ss):
+                aa=Random(length=len(filename_last_suffix),mode='num' if ss == 'N' else mode,strs=opts.get('custom'))
+                if isinstance(aa,int):
+                    filename_a[-1]='%0{}d'.format(len(filename_last_suffix))%aa
+                else:
+                    filename_a[-1]='{}'.format(aa)
+                if filename_last_ext:
+                    filename_a[-1]=filename_a[-1]+'.{}'.format(filename_last_ext)
+        return split.join(filename_a)
+
+    if IsNone(filename) or not isinstance(filename,str):
+        rfilename=Random(length=default_length,mode='num' if suffix in ['n','N'] else mode,strs=opts.get('custom'))
+        base_dir='.' if not base_dir else base_dir
+    else:
+        base_dir=os.path.dirname(filename)
+        base_dir='.' if not base_dir else base_dir
+        rfilename=mk_filename(os.path.basename(filename),split)
+    if uniq:
+        if isinstance(base_dir,str) and os.path.isdir(base_dir):
+            inc=False
+            for i in range(0,1000):
+                if inc:
+                    new_filename=rfilename+'{}%0{}d'.format(split,default_length)%(i-1)
+                    if suffix:
+                        new_filename=new_filename+'.{}'.format(suffix)
+                    new_file=os.path.join(base_dir,new_filename)
+                    if not os.path.exists(new_file):
+                        return outfile(new_file,opt)
+                else:
+                    new_filename=mk_filename(rfilename,split)
+                    if new_filename == rfilename:
+                        inc=True
+                    if suffix:
+                        new_filename=new_filename+'.{}'.format(suffix)
+                    new_file=os.path.join(base_dir,new_filename)
+                    if not os.path.exists(new_file):
+                        return outfile(new_file,opt)
+    else:
+        if base_dir == '.':
+            if suffix:
+                return rfilename+'.{}'.format(suffix)
+            return rfilename
+        return outfile(os.path.join(base_dir,rfilename),opt)
 
 
 #if __name__ == "__main__":
