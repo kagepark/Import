@@ -4165,7 +4165,11 @@ def printf(*msg,**opts):
     form=opts.get('form')
     intro=opts.get('intro',None)
     logfile=opts.get('logfile',[])
+    printf_log_base=Variable('printf_log_base',parent=1,mode='all')
+    if log is None and isinstance(printf_log_base,int) and not isinstance(printf_log_base,bool) and isinstance(log_level,int):
 
+        if printf_log_base < log_level:
+            return
     #Logfile
     if isinstance(logfile,str):
         logfile=logfile.split(',')
@@ -4227,9 +4231,6 @@ def printf(*msg,**opts):
     if Type(log,'function'):
         log_p=True
         FeedFunc(log,msg_str,**opts)
-    if isinstance(printf_log_base,int) and not isinstance(printf_log_base,bool):
-        if printf_log_base < log_level:
-            return
     # Save msg to file
     if 'f' in dsp or 'a' in dsp:
         for ii in logfile:
