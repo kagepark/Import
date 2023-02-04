@@ -15,14 +15,11 @@ import pprint
 import inspect
 import getpass
 import traceback
+import subprocess
 from threading import Thread
 from importlib import import_module
 #import pip
 from datetime import datetime
-from subprocess import check_call
-from subprocess import PIPE as subprocess_PIPE
-from subprocess import Popen as subprocess_Popen
-from subprocess import TimeoutExpired as subprocess_TimeoutExpired
 printf_log_base=None
 try:
     from StringIO import StringIO
@@ -478,6 +475,7 @@ def TypeName(obj):
         if obj_name == 'Response': return 'response'
         if obj_name == 'Request': return 'request'
         return 'instance'
+    #if inspect.isclass(obj): return 'classobj'
     try:
         if obj_name == 'type':
             return obj.__name__
@@ -1289,7 +1287,7 @@ def Install(module,install_account='',mode=None,upgrade=False,version=None,force
            'bdist_wheel':'wheel',
         }
 
-    pip_main=check_call
+    pip_main=subprocess.check_call
     if not pip_main:
         print('!! PIP module not found')
         return False
@@ -3038,9 +3036,9 @@ def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin
         return -1,'wrong command information :{0}'.format(cmd),'',start_time.Init(),start_time.Init(),start_time.Now(int),cmd,path
 
     ansi_escape = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')
-    Popen=subprocess_Popen
-    PIPE=subprocess_PIPE
-    STDOUT=subprocess_PIPE
+    Popen=subprocess.Popen
+    PIPE=subprocess.PIPE
+    STDOUT=subprocess.PIPE
     out,err='',''
     exe_name=os.path.basename(executable) if executable else os.path.basename(os_env.get('SHELL','bash'))
     if dbg:
@@ -3188,8 +3186,8 @@ def rshell_tmp(cmd,timeout=None,ansi=True,path=None,progress=False,progress_pre_
     start_time=TIME()
     if not Type(cmd,'str',data=True):
         return -1,'wrong command information :{0}'.format(cmd),'',start_time.Init(),start_time.Init(),start_time.Now(int),cmd,path
-    Popen=subprocess_Popen
-    PIPE=subprocess_PIPE
+    Popen=subprocess.Popen
+    PIPE=subprocess.PIPE
     cmd_env=''
     cmd_a=cmd.split()
     cmd_file=cmd_a[0]
@@ -3221,7 +3219,7 @@ def rshell_tmp(cmd,timeout=None,ansi=True,path=None,progress=False,progress_pre_
     if PyVer(3):
         try:
             out, err = p.communicate(timeout=timeout)
-        except subprocess_TimeoutExpired:
+        except subprocess.TimeoutExpired:
             p.kill()
             if progress:
                 stop_threads=True
