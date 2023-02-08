@@ -1504,7 +1504,14 @@ def Import(*inps,**opts):
     install_account=opts.get('install_account','') # '--user','user','myaccount','account',myself then install at my local account
 
     #Append Module Path
-    base_lib_path=['/usr/lib/python3.6/site-packages','/usr/lib64/python3.6/site-packages','/usr/local/python3.6/site-packages','/usr/local/lib/python3.6/site-packages','/usr/local/lib64/python3.6/site-packages']
+    virtual_env=os.environ.get('VIRTUAL_ENV')
+    env_base_dir=virtual_env if virtual_env else '/usr'
+    base_lib_path=[]
+    for i in ['lib/python3.6/site-packages','lib64/python3.6/site-packages','local/python3.6/site-packages','local/lib/python3.6/site-packages','local/lib64/python3.6/site-packages']:
+        j=os.path.join(env_base_dir,i)
+        if os.path.isdir(j):
+            base_lib_path.append(j)
+
     path=opts.get('path') # if the module file in a special path then define path
     if not IsNone(path,check_type=str):
         if ',' in path:
@@ -1515,14 +1522,15 @@ def Import(*inps,**opts):
             base_lib_path=base_lib_path+[path]
     elif isinstance(path,(list,tuple)):
         base_lib_path=base_lib_path+list(path)
-    home=Path('~')
-    if isinstance(home,str):
-        base_lib_path.append('{}/.local/lib/python3.6/site-packages'.format(home))
-    for ii in base_lib_path:
-        if os.path.isdir(ii) and not ii in sys.path:
-            sys.path.append(ii)
+    if not virtual_env:
+        home=Path('~')
+        if isinstance(home,str):
+            base_lib_path.append('{}/.local/lib/python3.6/site-packages'.format(home))
+        for ii in base_lib_path:
+            if os.path.isdir(ii) and not ii in sys.path:
+                sys.path.append(ii)
 
-    if install_account in ['user','--user','personal','myaccount','account','myself']:
+    if not virtual_env and install_account in ['user','--user','personal','myaccount','account','myself']:
         install_account='--user'
     else:
         install_account=''
@@ -1539,6 +1547,7 @@ def Import(*inps,**opts):
     ninps=[]
     for inp in inps:
         ninps=ninps+inp.split(',')
+    load_failed=[]
     for inp in ninps:
         # if inp is File then automatically get the Path and file name
         # and automatically adding Path to path and import the File Name
@@ -1603,6 +1612,7 @@ def Import(*inps,**opts):
             else:
                 if dbg:
                     print('*** Import Error or Need install with SUDO or ROOT or --user permission')
+                load_failed.append(inp)
                 continue
         if loaded not in [None,0,1]: # import wildcard
             for ii in loaded.__dict__.keys():
@@ -1616,6 +1626,7 @@ def Import(*inps,**opts):
                                 continue
                         if not force: continue # Not force then ignore same name
                     globalenv[ii]=loaded.__dict__[ii]
+    return load_failed
 
 def MethodInClass(class_name):
     '''
