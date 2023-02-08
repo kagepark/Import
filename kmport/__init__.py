@@ -14,6 +14,7 @@ import struct
 import pprint
 import inspect
 import getpass
+import platform
 import traceback
 import subprocess
 from threading import Thread
@@ -4546,6 +4547,52 @@ def MkTemp(filename=None,suffix=None,split='-',opt='dry',base_dir=None,uniq=Fals
                 return rfilename+'.{}'.format(suffix)
             return rfilename
         return outfile(os.path.join(base_dir,rfilename),opt)
+
+def osversion(mode='upper'):
+    _platform=platform.system()
+    #64bit: platform.architecture()[0]
+    mode='l' if IsSame(mode,'lower') else 'u'
+
+    out={
+       'platform':_platform.lower() if mode == 'l' else _platform.upper(),
+       'name':None,
+       'version':None,
+       'ext':None,
+       '64bit':sys.maxsize > 2**32,
+       'code':None
+    }
+    if 'Linux' == _platform:
+        rt=rshell('''[ -f /etc/os-release ] && ( . /etc/os-release ; echo $ID)''')
+        out['name']=rt[1].lower() if mode == 'l' else rt[1].upper()
+        if IsIn(out['name'],('ubuntu','Raspbian','Fedora')):
+            rt=rshell('''[ -f /etc/os-release ] && ( . /etc/os-release ; echo $VERSION)''')
+            out['version']=rt[1].split()[0]
+            out['ext']=' '.join(rt[1].split()[1:])
+            rt=rshell('''[ -f /etc/os-release ] && ( . /etc/os-release ; echo $VERSION_CODENAME)''')
+            out['code']=rt[1]
+        else: #Centos, Rocky, Redhat,
+            rt=rshell('''[ -f /etc/redhat-release ] && cat /etc/redhat-release''')
+            if rt[0] == 0:
+                for ii in rt[1].split():
+                    if '.' in ii and ii.split('.')[0].isdigit():
+                        ii_a=ii.split('.')
+                        out['version']='{}.{}'.format(ii_a[0],ii_a[1])
+                        out['ext']=ii_a[-1]
+                        break
+    elif 'FreeBSD' == _platform:
+        out['name']=_platform.lower() if mode == 'l' else _platform.upper()
+        aa=platform.version()
+        out['version']=aa.split()[1].split('-')[0]
+        out['ext']=aa.split()[2]
+    elif 'Darwin' == _platform:
+        out['name']='osx' if mode == 'l' else 'OSX'
+        out['version']=platform.mac_ver()
+    elif 'Windows' == _platform:
+        out['name']=_platform.lower() if mode == 'l' else _platform.upper()
+        out['version']=platform.win32_ver()()
+    else:
+        out['name']=_platform.lower() if mode == 'l' else _platform.upper()
+    return out
 
 
 #if __name__ == "__main__":
