@@ -1501,6 +1501,8 @@ def Import(*inps,**opts):
     err=opts.get('err',False) # show install or loading error when True
     default=opts.get('default',False)
     dbg=opts.get('dbg',False) # show comment when True
+    auto_install=opts.get('auto_install',True) # if not found the module then automatically install
+    requirements=opts.get('requirements')
     #install_account=opts.get('install_account','--user')
     install_account=opts.get('install_account','') # '--user','user','myaccount','account',myself then install at my local account
 
@@ -1607,8 +1609,31 @@ def Import(*inps,**opts):
         loaded,module=ModLoad(inp,force=force,globalenv=globalenv,unload=unload,re_load=re_load)
         if loaded == 2: #unloaded
             continue
-        if loaded == 1: #not installed
-            if Install(module,install_account):
+        if loaded == 1: #Not found/installed Module
+            if not IsNone(requirements):
+                if isinstance(requirements,str):
+                    requirements=requirements.split(',')
+                if isinstance(requirements,(list,tuple)):
+                   for i in requirements:
+                        ii_l=i.split()
+                        version=None
+                        upgrade=False
+                        if len(ii_l) == 3:
+                            if ii_l[1] in ['=','==']:
+                                upgrade=True
+                                version='== '+ii_l[2]
+                            elif ii_l[1] in ['>','>=']:
+                                upgrade=True
+                            elif ii_l[1] in ['<','<=']:
+                                upgrade=True
+                                version=ii_l[i]+' '+ii_l[2]
+                        ii_a=ii_l[0].split(':')
+                        if len(ii_a) == 2:
+                            ic=Install(ii_a[1],install_account,version=version,upgrade=upgrade)
+                        else:
+                            ic=Install(ii_a[0],install_account,version=version,upgrade=upgrade)
+            #Install auto_install and not installed
+            elif auto_install and Install(module,install_account):
                 loaded,module=ModLoad(inp,force=force,globalenv=globalenv,re_load=re_load)
             else:
                 if dbg:
