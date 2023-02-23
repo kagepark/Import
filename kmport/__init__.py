@@ -2625,6 +2625,7 @@ def ping(host,**opts):
     count=opts.get('count',0)
     interval=opts.get('interval',1)
     keep_good=opts.get('keep_good',0)
+    keep_bad=opts.get('keep_bad',0)
     timeout=opts.get('timeout',opts.get('timeout_sec',0))
     lost_mon=opts.get('lost_mon',False)
     log=opts.get('log',None)
@@ -2699,7 +2700,6 @@ def ping(host,**opts):
             return delay,size
 
     def do_ping(ip,timeout=1,size=64,count=None,interval=0.7,log_format='ping',cancel_func=False):
-        if not IpV4(ip): return 1,'Wrong IP({})'.format(ip)
         ok=1
         i=1
         ping_cmd=find_executable('ping')
@@ -2728,63 +2728,56 @@ def ping(host,**opts):
                     StdOut('x')
                 elif log_format == 'ping':
                     StdOut('{} icmp_seq={} timeout ({} second)\n'.format(ip,i,timeout))
-            if count:
+            if isinstance(count,int) and count:
                 count-=1
                 if count < 1:
-                    return ok,'{} is alive'.format(ip)
+                    return ok,'{} is {}'.format(ip,'alive' if ok == 0 else 'death')
             i+=1
             time.sleep(interval)
 
+    if not IpV4(host): return False
     if log_format=='ping':
         if not count: count=1
         do_ping(host,timeout=timeout,size=64,count=count,log_format='ping',cancel_func=cancel_func)
     else:
         if alive_port:
             return True if IpV4(host,port=alive_port) else False
-        if not IpV4(host): return False
-        Time=TIME()
-        init_sec=0
-        infinit=False
-        if not count and not timeout:
-            count=1
-            infinit=True
-        if not infinit and not count:
-            init_sec=Time.Init()
-            if keep_good and keep_good > timeout:
-                timeout=keep_good + timeout
-            count=timeout
-            ocount=timeout
-        chk_sec=Time.Init()
         log_type=type(log).__name__
-        found_lost=False
         good=False
-        while count > 0:
+        Time=TIME()
+        gTime=TIME()
+        bTime=TIME()
+        while True:
            if IsCancel(cancel_func) or IsCancel(stop_func):
                log(' - Canceled/Stopped ping')
                return False
            rc=do_ping(host,timeout=1,size=64,count=1,log_format=None)
            if rc[0] == 0:
               good=True
-              if keep_good:
-                  if good and keep_good and TIME().Now(int) - chk_sec >= keep_good:
+              bTime.Init()
+              if isinstance(keep_good,int) and keep_good:
+                  if gTime.Out(keep_good):
                       return True
               else:
                   return True
               if log_type == 'function':
                   log('.',direct=True,log_level=1)
-              else:
+              elif log_format == '.':
                   StdOut('.')
            else:
               good=False
-              chk_sec=TIME().Now(int)
+              gTime.Init()
+              if isinstance(keep_bad,int) and keep_bad:
+                  if bTime.Out(keep_bad):
+                      return False
               if log_type == 'function':
                   log('x',direct=True,log_level=1)
               elif log_format == '.':
                   StdOut('x')
-           if init_sec:
-               count=ocount-(TIME().Now(int)-init_sec)
-           elif not infinit:
+           if isinstance(count,int) and count:
                count-=1
+               if count < 1: break
+           if Time.Out(timeout): break
            TIME().Sleep(interval)
         return good
 
