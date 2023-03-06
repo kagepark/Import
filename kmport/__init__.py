@@ -3173,8 +3173,10 @@ def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin
                   p.kill()
                   p.returncode=999
                   err='Error: Kill process after Timeout {0}'.format(otimeout)
-       if len(out) == 0 and len(err) == 0:
-           out, err = p.communicate()
+              if len(out) == 0 and len(err) == 0:
+                  out, err = p.communicate()
+       else:
+          out, err = p.communicate()
        if progress:
           stop_threads=True
           ppth.join()
