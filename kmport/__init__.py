@@ -81,16 +81,26 @@ def PyVer(*ver,**opts):
     '''
     cver=None
     msym=None
+    ver_sym=['=','==','>','<','>=','<=','!=']
     if len(ver) > 0:
-        if ver[0] in ['=','==','>','<','>=','<=','!=']:
+        if ver[0] in ver_sym:
             msym=ver[0]
         else:
             cver='{}'.format(ver[0])
         if len(ver) > 1:
             if msym:
-                cver='{}'.format(ver[1])
-            elif ver[1] in ['=','==','>','<','>=','<=','!=']:
-                msym=ver[1]
+                for i in ver[1:]:
+                    if cver:
+                        cver=cver+'.{}'.format(i)
+                    else:
+                        cver='{}'.format(i)
+            else:
+                for i in ver[1:]:
+                    if i in ver_sym:
+                        msym=i
+                        break
+                    else:
+                        cver=cver+'.{}'.format(i)
     if cver is None:
         if opts.get('main'): cver='{}'.format(opts.get('main'))
         if cver and opts.get('miner') and '.' not in cver: cver='{}.{}'.format(cver,opts.get('miner'))
@@ -100,7 +110,11 @@ def PyVer(*ver,**opts):
     cver_a=cver.split('.')
     cver_l=len(cver_a)
     for x in range(0,len(sys.version_info)):
-        if x < cver_l:
+        if x < cver_l-1:
+            cmsym=msym+'=' if '=' not in msym else msym
+            if not eval('{} {} {}'.format(sys.version_info[x],cmsym,cver_a[x])):
+                return False
+        elif x == cver_l-1:
             if not eval('{} {} {}'.format(sys.version_info[x],msym,cver_a[x])):
                 return False
     return True
@@ -3447,6 +3461,43 @@ def Sort(src,reverse=False,func=None,order=None,field=None,base='key',sym=None):
         return lst
         #return [i[0] for i in lst]
 
+def VersionSort(data,sym=',',rev=False):
+    def DictKeysToList(data,ver='',out=[]):
+        if isinstance(data,dict):
+            for i in data:
+                if not isinstance(data[i],dict) or data[i] in ['',None,{}]:
+                    #out.append(ver+'.{}'.format(i)) #Use key (changed format)
+                    out.append(data[i]) # Use original Data
+                else:
+                    DictKeysToList(data[i],ver+'.{}'.format(i) if ver else '{}'.format(i),out=out)
+        return ver
+    if isinstance(data,str): data=data.split(sym)
+    if not isinstance(data,(list,tuple)): return False
+    data=list(data)
+    if len(data) < 2: return data
+    sort_data={}
+    out=[]
+    #convert list to dict format
+    for i in data:
+        if not i: continue
+        tt=sort_data
+        j_a=Split(i,'.|-|:|_')
+        j_m=len(j_a)-1
+        for j in range(0,j_m+1):
+            j_a[j]=Int(j_a[j])
+            if j == j_m:
+                tt[j_a[j]]=i
+            else:
+                if j_a[j] not in tt: tt[j_a[j]]={}
+                tt=tt[j_a[j]]
+
+    #dict data to auto sorting (like as python2.x style sorting)
+    new_data_str=pprint.pformat(sort_data)
+    new_data=ast.literal_eval(new_data_str)
+    #Get sorted data from dict sorting
+    DictKeysToList(new_data,out=out)
+    if rev: out.reverse() #reverse data
+    return out
 
 def MacV4(src,**opts):
     '''
@@ -4613,6 +4664,45 @@ def osversion(mode='upper'):
     else:
         out['name']=_platform.lower() if mode == 'l' else _platform.upper()
     return out
+
+def Strip(src,mode='all',sym='whitespace'):
+    if isinstance(src,str):
+        if mode in ['start','left','begin']:
+            if sym=='whitespace':
+                return src.lstrip()
+            else:
+                return src.lstrip(sym)
+        elif mode in ['end','right','last']:
+            if sym=='whitespace':
+                return src.rstrip()
+            else:
+                return src.rstrip(sym)
+        elif mode in ['both','edge','outside']:
+            if sym=='whitespace':
+                return src.strip()
+            else:
+                return src.strip(sym)
+        elif mode in ['inside']:
+            for s in range(0,len(src)):
+                if sym=='whitespace':
+                    if src[s] != ' ': break
+                else:
+                    if src[s] != sym: break
+            for e in range(len(src)-1,0,-1):
+                if sym=='whitespace':
+                    if src[e] != ' ': break
+                else:
+                    if src[e] != sym: break
+            if sym=='whitespace':
+                return src[:s]+' '.join(src[s:e+1].split())+src[e+1:]
+            else:
+                return src[:s]+sym.join(src[s:e+1].split(sym))+src[e+1:]
+        else:
+            if sym=='whitespace':
+                return ' '.join(src.split())
+            else:
+                return sym.join(src.split(sym))
+    return src
 
 
 #if __name__ == "__main__":
