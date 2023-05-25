@@ -3101,19 +3101,20 @@ def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin
         for ii in remove_all_path.split(':'):
             full_path_a=[i for i in full_path_a if i != ii]
         full_path=':'.join(full_path_)
+    inside_cmd=None
     if full_path:
         if exe_name in ['csh','tcsh']:
-            cmd='''setenv PATH "%s"; %s'''%(full_path,cmd)
+            inside_cmd='''setenv PATH "%s"; %s'''%(full_path,cmd)
         else:
-            cmd='''export PATH=%s; %s'''%(full_path,cmd)
+            inside_cmd='''export PATH=%s; %s'''%(full_path,cmd)
     elif isinstance(path,str) and len(path) > 0:
         if cd:
-            cmd='''cd %s && ./%s'''%(path,cmd)
+            inside_cmd='''cd %s && ./%s'''%(path,cmd)
         else:
             if exe_name in ['csh','tcsh']:
-                cmd='''setenv PATH "%s:${PATH}"; %s'''%(path,cmd)
+                inside_cmd='''setenv PATH "%s:${PATH}"; %s'''%(path,cmd)
             else:
-                cmd='''export PATH=%s:${PATH}; %s'''%(path,cmd)
+                inside_cmd='''export PATH=%s:${PATH}; %s'''%(path,cmd)
     else:
         cmd_a=cmd.split()
         cmd_file=cmd_a[0]
@@ -3122,7 +3123,8 @@ def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin
     if executable:
         if not os.path.isfile(executable):
             executable=find_executable(exe_name)
-    p = Popen(cmd , shell=True, stdout=PIPE, stderr=STDOUT,executable=executable, env=os_env)
+    inside_cmd=inside_cmd if inside_cmd else cmd
+    p = Popen(inside_cmd , shell=True, stdout=PIPE, stderr=STDOUT,executable=executable, env=os_env)
 
     #Need error log out from thread to output
     def write_err(p):
