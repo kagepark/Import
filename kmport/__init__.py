@@ -1524,7 +1524,8 @@ def Import(*inps,**opts):
     virtual_env=os.environ.get('VIRTUAL_ENV')
     env_base_dir=virtual_env if virtual_env else '/usr'
     base_lib_path=[]
-    for i in ['lib/python3.6/site-packages','lib64/python3.6/site-packages','local/python3.6/site-packages','local/lib/python3.6/site-packages','local/lib64/python3.6/site-packages']:
+    py_ver=PyVer()
+    for i in ['lib/python{}/site-packages'.format(py_ver),'lib64/python{}/site-packages'.format(py_ver),'local/python{}/site-packages'.format(py_ver),'local/lib/python{}/site-packages'.format(py_ver),'local/lib64/python{}/site-packages'.format(py_ver)]:
         j=os.path.join(env_base_dir,i)
         if os.path.isdir(j):
             base_lib_path.append(j)
@@ -1546,7 +1547,6 @@ def Import(*inps,**opts):
         for ii in base_lib_path:
             if os.path.isdir(ii) and not ii in sys.path:
                 sys.path.append(ii)
-
     if not virtual_env and install_account in ['user','--user','personal','myaccount','account','myself']:
         install_account='--user'
     else:
