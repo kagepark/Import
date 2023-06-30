@@ -3327,23 +3327,29 @@ def sprintf(string,*inps,**opts):
                     if len(inps) > mx: return True,string.format(*inps)
                 elif opts:
                     if len(opts) > mx: return True,string.format(*opts.values())
-                return False,"Need more input (tuple/list) parameters(require {})".format(mx)
+                return False,"""Need more input (tuple/list) parameters(require {})""".format(mx)
             elif 0< i < 2:
                 new_str=''
                 string_a=string.split()
                 oidx=0
                 for ii in tmp:
                     idx=None
-                    if '{%s}'%(ii) in string_a:
-                        idx=string_a.index('{%s}'%(ii))
-                    elif "'{%s}'"%(ii) in string_a:
-                        idx=string_a.index("'{%s}'"%(ii))
+                    if '''{%s}'''%(ii) in string_a:
+                        idx=string_a.index('''{%s}'''%(ii))
+                    elif """'{%s}'"""%(ii) in string_a:
+                        idx=string_a.index("""'{%s}'"""%(ii))
+                    elif '''"{%s}"'''%(ii) in string_a:
+                        idx=string_a.index('''"{%s}"'''%(ii))
                     if isinstance(idx,int):
                         if ii in opts:
-                            string_a[idx]=string_a[idx].format(**opts)
+                            if isinstance(opts[ii],str) and "'" in opts[ii] and "'" in string_a[idx]:
+                                _t_='''"{%s}"'''%(ii)
+                                string_a[idx]=_t_.format(**opts)
+                            else:
+                                string_a[idx]=string_a[idx].format(**opts)
                     elif ii in opts:
                         for jj in range(0,len(string_a)):
-                           if '{%s}'%(ii) in string_a[jj]:
+                           if '''{%s}'''%(ii) in string_a[jj]:
                                string_a[jj]=string_a[jj].format(**opts)
                 return True,Join(string_a,symbol=' ')
             elif i == 2:
@@ -3352,25 +3358,31 @@ def sprintf(string,*inps,**opts):
                 oidx=0
                 for ii in tmp:
                     idx=None
-                    if '%({})s'.format(ii) in string_a:
-                        idx=string_a.index('%({})s'.format(ii))
-                    elif "'%({})'".format(ii) in string_a:
-                        idx=string_a.index("'%({})s'".format(ii))
+                    if '''%({})s'''.format(ii) in string_a:
+                        idx=string_a.index('''%({})s'''.format(ii))
+                    elif """'%({})'""".format(ii) in string_a:
+                        idx=string_a.index("""'%({})s'""".format(ii))
+                    elif '''"%({})"'''.format(ii) in string_a:
+                        idx=string_a.index('''"%({})s"'''.format(ii))
                     if isinstance(idx,int):
                         if ii in opts:
-                            string_a[idx]=string_a[idx]%(opts)
+                            if isinstance(opts[ii],str) and "'" in opts[ii] and "'" in string_a[idx]:
+                                _t_='''"{%s}"'''%(ii)
+                                string_a[idx]=_t_%(opts)
+                            else:
+                                string_a[idx]=string_a[idx]%(opts)
                     elif ii in opts:
                         for jj in range(0,len(string_a)):
-                           if '%({})s'.format(ii) in string_a[jj]:
+                           if '''%({})s'''.format(ii) in string_a[jj]:
                                string_a[jj]=string_a[jj]%(opts)
                 return True,Join(string_a,symbol=' ')
             elif i == 3:
                 if inps:
                     if len(tmp) == len(inps): return True,string.format(*inps)
-                    return False,"Mismatched input (tuple/list) number (require:{}, input:{})".format(len(tmp),len(inps))
+                    return False,"""Mismatched input (tuple/list) number (require:{}, input:{})""".format(len(tmp),len(inps))
                 elif opts:
                     if len(tmp) == len(opts): return True,string.format(*opts.values())
-                    return False,"Mismatched input (tuple/list) number (require:{}, input:{})".format(len(tmp),len(opts))
+                    return False,"""Mismatched input (tuple/list) number (require:{}, input:{})""".format(len(tmp),len(opts))
         i+=1
     return True,string
 
