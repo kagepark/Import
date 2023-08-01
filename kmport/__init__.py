@@ -2521,7 +2521,7 @@ def ExceptMessage(msg='',default=None):
         return msg
     return default
 
-def IpV4(ip,out='str',default=False,port=None,bmc=False,used=False,pool=None):
+def IpV4(ip,out='str',default=False,port=None,bmc=False,used=False,pool=None,support_hostname=False):
     '''
     check/convert IP
     ip : int, str, ...
@@ -2599,6 +2599,15 @@ def IpV4(ip,out='str',default=False,port=None,bmc=False,used=False,pool=None):
                 ip_int=struct.unpack("!I", socket.inet_aton(ipstr))[0] # convert Int IP
                 #struct.unpack("!L", socket.inet_aton(ip))[0]
             except:
+                if support_hostname:
+                    try: # hostname abc.def case
+                        return IpV4(socket.gethostbyname(ipstr),out=out,default=default,port=port,bmc=bmc,used=used,pool=pool)
+                    except:
+                        return default
+        elif support_hostname: # hostname abc case
+            try:
+                return IpV4(socket.gethostbyname(ipstr),out=out,default=default,port=port,bmc=bmc,used=used,pool=pool)
+            except:
                 return default
     elif isinstance(ip,int):
         try:
@@ -2643,10 +2652,9 @@ def ping(host,**opts):
     timeout=opts.get('timeout',opts.get('timeout_sec',0))
     lost_mon=opts.get('lost_mon',False)
     log=opts.get('log',None)
-    stop_func=opts.get('stop_func',None)
     log_format=opts.get('log_format','.')
     alive_port=opts.get('alive_port')
-    cancel_func=opts.get('cancel_func',None)
+    cancel_func=opts.get('cancel_func',opts.get('stop_func',None))
 
     ICMP_ECHO_REQUEST = 8 # Seems to be the same on Solaris. From /usr/include/linux/icmp.h;
     ICMP_CODE = socket.getprotobyname('icmp')
@@ -2749,20 +2757,20 @@ def ping(host,**opts):
             i+=1
             time.sleep(interval)
 
-    if not IpV4(host): return False
+    if not IpV4(host,support_hostname=opts.get('support_hostname',True)): return False
     if log_format=='ping':
         if not count: count=1
         do_ping(host,timeout=timeout,size=64,count=count,log_format='ping',cancel_func=cancel_func)
     else:
         if alive_port:
-            return True if IpV4(host,port=alive_port) else False
+            return True if IpV4(host,port=alive_port,support_hostname=opts.get('support_hostname',True)) else False
         log_type=type(log).__name__
         good=False
         Time=TIME()
         gTime=TIME()
         bTime=TIME()
         while True:
-           if IsCancel(cancel_func) or IsCancel(stop_func):
+           if IsCancel(cancel_func):
                log(' - Canceled/Stopped ping')
                return False
            rc=do_ping(host,timeout=1,size=64,count=1,log_format=None)
@@ -2929,6 +2937,7 @@ class WEB:
             if not ping(chk_dest,timeout_sec=3):
                 return False,'Can not access to destination({})'.format(chk_dest)
         ss = self.requests.Session()
+        err_msg=''
         for j in range(0,max_try):
             try:
                 if IsSame(mode,'post'):
@@ -2941,9 +2950,10 @@ class WEB:
             except:
                 pass
             #except requests.exceptions.RequestException as e:
-            if dbg: StdErr("Server({}) has no response (wait {}/{} (10s))".format(chk_dest,j,max_try))
+            err_msg='Server({}) has no response'.format(chk_dest)
+            if dbg: StdErr("\nServer({}) has no response (wait {}/{} (10s))".format(chk_dest,j,max_try))
             time.sleep(10)
-        return False,'TimeOut'
+        return False,'TimeOut: {}'.format(err_msg) if err_msg else 'TimeOut'
 
     def str2url(self,string):
         if IsNone(string): return ''
@@ -3031,13 +3041,14 @@ class TIME:
     def Datetime(self):
         return datetime()
 
-def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin/bash',path=None,progress=False,progress_pre_new_line=False,progress_post_new_line=False,log=None,env={},full_path=None,remove_path=None,remove_all_path=None,default_timeout=3600,env_out=False,cd=False):
+def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin/bash',path=None,progress=False,progress_pre_new_line=False,progress_post_new_line=False,log=None,env={},full_path=None,remove_path=None,remove_all_path=None,default_timeout=3600,env_out=False,cd=False,decode=None):
     '''
     Interactive shell
     path: append the path to existing system path
     full_path: exchange the full_path to system path
     remove_path: remove front remove_path at full_path
     remove_all_path: remove remove_all_path in full_path
+    decode: character decoding (default : ISO-8859-1), it changed to Str() default
     '''
     # OS environments
     os_env=dict(os.environ)
@@ -3109,7 +3120,12 @@ def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin
             inside_cmd='''export PATH=%s; %s'''%(full_path,cmd)
     elif isinstance(path,str) and len(path) > 0:
         if cd:
-            inside_cmd='''cd %s && ./%s'''%(path,cmd)
+            cmd_a=cmd.split()
+            cmd_file=cmd_a[0]
+            if cmd_file[0] != '/' and cmd_file == os.path.basename(cmd_file) and os.path.isfile(cmd_file):
+                inside_cmd='''cd %s && ./%s'''%(path,cmd)
+            else:
+                inside_cmd='''cd %s && %s'''%(path,cmd)
         else:
             if exe_name in ['csh','tcsh']:
                 inside_cmd='''setenv PATH "%s:${PATH}"; %s'''%(path,cmd)
@@ -3196,9 +3212,11 @@ def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin
        if progress:
           stop_threads=True
           ppth.join()
-    if PyVer(3):
-        if Type(out,'bytes'): out=out.decode("ISO-8859-1").rstrip()
-        if Type(err,'bytes'): err=err.decode("ISO-8859-1").rstrip()
+    #if PyVer(3):
+    #    if Type(out,'bytes'): out=out.decode("ISO-8859-1").rstrip()
+    #    if Type(err,'bytes'): err=err.decode("ISO-8859-1").rstrip()
+    out=Str(out,encode=decode).rstrip()
+    err=Str(err,encode=decode).rstrip()
     if ansi:
         out=ansi_escape.sub('',out)
         err=ansi_escape.sub('',err)
@@ -4243,7 +4261,7 @@ def FeedFunc(obj,*inps,**opts):
             try:
                 return obj()
             except:
-                e=ExceptMsg()
+                e=ExceptMessage()
                 StdErr(e)
     return False
 
@@ -4718,6 +4736,16 @@ def Strip(src,mode='all',sym='whitespace'):
                 return sym.join(src.split(sym))
     return src
 
+def Pop(src,key,default=None):
+    if isinstance(src,dict):
+        if key in src:
+            return src.pop(key)
+    elif isinstance(src,list):
+        if isinstance(key,int) and not isinstance(key,bool):
+            if len(src) > abs(key):
+                return src.pop(key)
+    if not IsNone(default):
+        return default
 
 #if __name__ == "__main__":
 #    # Integer
