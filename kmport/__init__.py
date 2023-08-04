@@ -1896,7 +1896,7 @@ def FunctionArgs(func,**opts):
     '''
     mode=opts.get('mode',opts.get('field','defaults'))
     default=opts.get('default',None)
-    if not Type(func,'function'):
+    if not Type(func,'function','method'):
         return default
     rt={}
     #Not support *v parameter with getargspec()
@@ -1919,7 +1919,10 @@ def FunctionArgs(func,**opts):
         del args[-len(arg.defaults):]
 
     if not IsNone(defaults): rt['defaults']=defaults
-    if args: rt['args']=args
+    if args:
+        if args[0] == 'self':
+            args=args[1:]
+        rt['args']=args
     if varargs: rt['varargs']=varargs
     if keywords: rt['keywords']=keywords
     if Type(mode,(list,tuple)):
@@ -2655,7 +2658,6 @@ def ping(host,**opts):
     log_format=opts.get('log_format','.')
     alive_port=opts.get('alive_port')
     cancel_func=opts.get('cancel_func',opts.get('stop_func',None))
-
     ICMP_ECHO_REQUEST = 8 # Seems to be the same on Solaris. From /usr/include/linux/icmp.h;
     ICMP_CODE = socket.getprotobyname('icmp')
     ERROR_DESCR = {
@@ -2757,6 +2759,7 @@ def ping(host,**opts):
             i+=1
             time.sleep(interval)
 
+    #PING() function
     if not IpV4(host,support_hostname=opts.get('support_hostname',True)): return False
     if log_format=='ping':
         if not count: count=1
@@ -2771,7 +2774,7 @@ def ping(host,**opts):
         bTime=TIME()
         while True:
            if IsCancel(cancel_func):
-               log(' - Canceled/Stopped ping')
+               printf('ping({}) - Canceled/Stopped ping by cancel signal'.format(host),log=log,dsp='f')
                return False
            rc=do_ping(host,timeout=1,size=64,count=1,log_format=None)
            if rc[0] == 0:
@@ -2783,7 +2786,7 @@ def ping(host,**opts):
               else:
                   return True
               if log_type == 'function':
-                  log('.',direct=True,log_level=1)
+                  printf('.',direct=True,log=log,log_level=1)
               elif log_format == '.':
                   StdOut('.')
            else:
@@ -2793,7 +2796,7 @@ def ping(host,**opts):
                   if bTime.Out(keep_bad):
                       return False
               if log_type == 'function':
-                  log('x',direct=True,log_level=1)
+                  printf('x',direct=True,log_level=1,log=log)
               elif log_format == '.':
                   StdOut('x')
            if isinstance(count,int) and count:
@@ -3316,10 +3319,12 @@ def rshell_tmp(cmd,timeout=None,ansi=True,path=None,progress=False,progress_pre_
     else:
         return p.returncode, ansi_escape.sub('',out).rstrip(), ansi_escape.sub('',err).rstrip(),start_time.Init(),start_time.Now(int),cmd,path
 
-def IsCancel(func):
+def IsCancel(func,**opts):
     ttt=type(func).__name__
     if ttt in ['function','instancemethod','method']:
-        if func(): return True
+        opts['parent']=3 if 'parent' not in opts else opts['parent']+2
+        if FeedFunc(func,**opts):
+            return True
     elif ttt in ['bool','str'] and func in [True,'cancel']:
         return True
     return False
@@ -4209,7 +4214,7 @@ def FeedFunc(obj,*inps,**opts):
             except:
                 StdErr('Function name "{}" not found in the module\n'.format(obj))
                 return False
-    if Type(obj,('function','builtin_function_or_method','type','int','str','list','dict')):
+    if Type(obj,('function','method','builtin_function_or_method','type','int','str','list','dict')):
         fcargs=FunctionArgs(obj,mode='detail',default={})
         ninps=[]
         nopts={}
