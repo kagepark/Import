@@ -2785,7 +2785,7 @@ def ping(host,**opts):
                       return True
               else:
                   return True
-              if log_type == 'function':
+              if log_type in ['function','method']:
                   printf('.',direct=True,log=log,log_level=1)
               elif log_format == '.':
                   StdOut('.')
@@ -2795,7 +2795,7 @@ def ping(host,**opts):
               if isinstance(keep_bad,int) and keep_bad:
                   if bTime.Out(keep_bad):
                       return False
-              if log_type == 'function':
+              if log_type in ['function','method']:
                   printf('x',direct=True,log_level=1,log=log)
               elif log_format == '.':
                   StdOut('x')
@@ -4346,9 +4346,12 @@ def printf(*msg,**opts):
 
     log_p=False
     #Log function
-    if Type(log,'function'):
-        log_p=True
-        FeedFunc(log,msg_str,**opts)
+    if Type(log,'function','method'):
+        try:
+            FeedFunc(log,msg_str,**opts)
+            log_p=True
+        except:
+            pass
     # Save msg to file
     if 'f' in dsp or 'a' in dsp:
         for ii in logfile:
