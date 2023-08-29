@@ -4,6 +4,7 @@ import gc
 import re
 import sys
 import ast
+import copy
 import json
 import time
 import random
@@ -454,12 +455,17 @@ def Next(src,step=0,out=None,default='org'):
             return src[step]
     return Default(src,default)
 
-def Copy(src):
+def Copy(src,deep=False):
     '''
     Copy data 
     '''
-    if isinstance(src,(list,tuple)): return src[:]
-    if isinstance(src,dict): return src.copy()
+    if isinstance(src,(list,tuple)):
+        return src[:]
+    if isinstance(src,dict):
+        if deep:
+            copy.deepcopy(src)
+            return src
+        return src.copy()
     if isinstance(src,str): return '{}'.format(src)
     if isinstance(src,int): return int('{}'.format(src))
     if isinstance(src,float): return float('{}'.format(src))
@@ -1063,7 +1069,7 @@ def IsInt(src,mode='all'):
             return _int_(src)
     return False
 
-def Dict(*inp,**opt):
+def Dict(*inp,deepcopy=False,copy=False,**opt):
     '''
     Dictionary
     - Define
@@ -1074,7 +1080,12 @@ def Dict(*inp,**opt):
     '''
     src={}
     if len(inp) >= 1:
-        src=inp[0]
+        if deepcopy:
+            src=Copy(inp[0],deep=True)
+        elif copy:
+            src=Copy(inp[0])
+        else:
+            src=inp[0]
     src_type=TypeName(src)
     if isinstance(src,dict):
         if src_type == 'QueryDict': # Update data at request.data of Django
