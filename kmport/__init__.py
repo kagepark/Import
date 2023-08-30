@@ -2843,11 +2843,14 @@ class WEB:
         if mode == 'server':
             return self.requests.get_host().split(':')
         else:
-            x_forwarded_for = self.requests.META.get('HTTP_X_FORWARDED_FOR')
-            if x_forwarded_for:
-                return x_forwarded_for.split(',')[0]
-            else:
-                return self.requests.META.get('REMOTE_ADDR')
+            try:
+                x_forwarded_for = self.requests.META.get('HTTP_X_FORWARDED_FOR')
+                if x_forwarded_for:
+                    return x_forwarded_for.split(',')[0]
+                else:
+                    return self.requests.META.get('REMOTE_ADDR')
+            except:
+                return ''
 
     def Method(self,method_name=None,mode='lower'):
         method_n=self.requests.method
