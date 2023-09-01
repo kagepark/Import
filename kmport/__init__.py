@@ -22,7 +22,44 @@ from threading import Thread
 from importlib import import_module
 #import pip
 from datetime import datetime
+# If importing "from kmport import *" then
+# adding "global  printf_log_base",
+# adding .... then use printf_log_base,... parameter
 printf_log_base=None
+printf_caller_detail=False
+printf_caller_tree=False
+krc_define={
+  'GOOD':[True,'True','Good','Ok','Pass','Sure',{'OK'}],
+  'FAIL':[False,'False','Fail',{'FAL'}],
+  'NONE':[None,'None','Nothing','Empty','Null','N/A',{'NA'}],
+  'IGNO':['IGNO','Ignore',{'IGN'}],
+  'ERRO':['ERR','Erro','Error',{'ERR'}],
+  'WARN':['Warn','Warning',{'WAR'}],
+  'UNKN':['Unknown','UNKN',"Don't know",'Not sure',{'UNK'}],
+  'JUMP':['Jump',{'JUMP'}],
+  'TOUT':['TimeOut','Time Out','TMOUT','TOUT',{'TOUT'}],
+  'REVD':['Cancel','Canceled','REV','REVD','Revoked','Revoke',{'REVD'}],
+  'LOST':['Lost','Connection Lost','Lost Connection',{'LOST'}],
+  'NFND':['File not found','Not Found','Can not found',{'NFND'}],
+  'STOP':['Stop','Stopped',{'STOP'}]
+}
+# REVD(Cancel) : Whole Stop 
+# STOP         : Currently running process stop
+# UNKN(Unknown): UNKN or not defined return code
+
+###### Python Return #######
+# True     : Good
+# False    : False
+# 1        : Good level user define
+# 0        : False level user define (like as cancel)
+#----------------------------------------------------
+# if rc is True  : rc only True then True
+# if rc is False : rc only False then True
+# if rc == True  : rc is 1 or True then True
+# if rc == False : rc is 0 or False then True
+# if rc is 1     : rc only 1 then True
+# if rc is 0     : rc only 0 then True
+
 try:
     from StringIO import StringIO
 except ImportError:
@@ -459,18 +496,16 @@ def Copy(src,deep=False):
     '''
     Copy data 
     '''
-    if isinstance(src,(list,tuple)):
-        return src[:]
+    if isinstance(src,(list,tuple)): return src[:]
     if isinstance(src,dict):
-        if deep:
-            copy.deepcopy(src)
-            return src
-        return src.copy()
+        return copy.deepcopy(src) if deep else src.copy()
     if isinstance(src,str): return '{}'.format(src)
+    if isinstance(src,bool): return src
     if isinstance(src,int): return int('{}'.format(src))
     if isinstance(src,float): return float('{}'.format(src))
     if PyVer(2):
         if isinstance(src,long): return long('{}'.format(src))
+    return src
 
 def TypeName(obj):
     '''
@@ -1009,7 +1044,7 @@ def IsVar(src,obj=None,default=False,mode='all',parent=0):
     if oo == '_#_': return default
     return True
 
-def IsFunction(src,find='_#_'):
+def IsFunction(src=None,find='_#_'):
     '''
     Check the find is Function in src object
     '''
@@ -1018,7 +1053,7 @@ def IsFunction(src,find='_#_'):
             find=Global().get(find)
         return inspect.isfunction(find)
     else:
-        if type(src).__name__ == 'function': return True # src is function then
+        if type(src).__name__ in ['function','instancemethod','method']: return True # src is function then
     # find function in object
     aa=[]
     if type(find).__name__ == 'function': find=find.__name__
@@ -1080,10 +1115,8 @@ def Dict(*inp,deepcopy=False,copy=False,**opt):
     '''
     src={}
     if len(inp) >= 1:
-        if deepcopy:
-            src=Copy(inp[0],deep=True)
-        elif copy:
-            src=Copy(inp[0])
+        if deepcopy or copy:
+            src=Copy(inp[0],deep=deepcopy)
         else:
             src=inp[0]
     src_type=TypeName(src)
@@ -2658,6 +2691,9 @@ def IpV4(ip,out='str',default=False,port=None,bmc=False,used=False,pool=None,sup
 def ping(host,**opts):
     '''
     same as ping command
+    True : pinging
+    False: can not ping
+    0    : Canceled ping
     '''
     count=opts.get('count',0)
     interval=opts.get('interval',1)
@@ -2739,7 +2775,7 @@ def ping(host,**opts):
         i=1
         ping_cmd=find_executable('ping')
         while True:
-            if IsCancel(cancel_func):
+            if IsBreak(cancel_func):
                 return -1,'canceled'
             if ping_cmd:
                 ping_s=size-8 if size >= 8 else 0
@@ -2784,11 +2820,11 @@ def ping(host,**opts):
         gTime=TIME()
         bTime=TIME()
         while True:
-           if IsCancel(cancel_func):
-               printf('ping({}) - Canceled/Stopped ping by cancel signal'.format(host),log=log,dsp='f')
-               return False
-           rc=do_ping(host,timeout=1,size=64,count=1,log_format=None)
-           if rc[0] == 0:
+           rc=do_ping(host,timeout=1,size=64,count=1,log_format=None,cancel_func=cancel_func)
+           if rc[0] == -1:
+              printf('- ping({}) - Canceled/Stopped ping by cancel signal'.format(host),log=log,dsp='f')
+              return 0 # Cancel return value
+           elif rc[0] == 0:
               good=True
               bTime.Init()
               if isinstance(keep_good,int) and keep_good:
@@ -2843,14 +2879,11 @@ class WEB:
         if mode == 'server':
             return self.requests.get_host().split(':')
         else:
-            try:
-                x_forwarded_for = self.requests.META.get('HTTP_X_FORWARDED_FOR')
-                if x_forwarded_for:
-                    return x_forwarded_for.split(',')[0]
-                else:
-                    return self.requests.META.get('REMOTE_ADDR')
-            except:
-                return ''
+            x_forwarded_for = self.requests.META.get('HTTP_X_FORWARDED_FOR')
+            if x_forwarded_for:
+                return x_forwarded_for.split(',')[0]
+            else:
+                return self.requests.META.get('REMOTE_ADDR')
 
     def Method(self,method_name=None,mode='lower'):
         method_n=self.requests.method
@@ -2951,7 +2984,10 @@ class WEB:
             if IpV4(chk_dest,bmc=True) is False:
                 return False,'The IP({}) is not BMC IP'.format(chk_dest)
         if ping and chk_dest:
-            if not ping(chk_dest,timeout_sec=3):
+            ping_rc=ping(chk_dest,timeout_sec=3)
+            if not isinstance(ping_rc,bool) and ping_rc==0:
+                return 0,'Canceled'
+            elif not ping_rc:
                 return False,'Can not access to destination({})'.format(chk_dest)
         ss = self.requests.Session()
         err_msg=''
@@ -3334,12 +3370,16 @@ def rshell_tmp(cmd,timeout=None,ansi=True,path=None,progress=False,progress_pre_
         return p.returncode, ansi_escape.sub('',out).rstrip(), ansi_escape.sub('',err).rstrip(),start_time.Init(),start_time.Now(int),cmd,path
 
 def IsCancel(func,**opts):
-    ttt=type(func).__name__
-    if ttt in ['function','instancemethod','method']:
+    return IsBreak(func,**opts)
+
+def IsBreak(func,**opts):
+    #ttt=type(func).__name__
+    #if ttt in ['function','instancemethod','method']:
+    if IsFunction(func):
         opts['parent']=3 if 'parent' not in opts else opts['parent']+2
         if FeedFunc(func,**opts):
             return True
-    elif ttt in ['bool','str'] and func in [True,'cancel']:
+    elif type(func).__name__ in ['bool','str'] and IsIn(func,[True,'cancel','canceling','REVD','stop','break']):
         return True
     return False
 
@@ -4119,7 +4159,16 @@ def Replace(src,replace_what,replace_to,default=None,newline='\n'):
         tmp.append(Join(tt,replace_to) if tt else ii)
     return Join(tmp,newline)
 
-def krc(rt,chk='_',rtd={'GOOD':[True,'True','Good','Ok','Pass','Sure',{'OK'},0],'FAIL':[False,'False','Fail',{'FAL'}],'NONE':[None,'None','Nothing','Empty','Null','N/A',{'NA'}],'IGNO':['IGNO','Ignore',{'IGN'}],'ERRO':['ERR','Erro','Error',{'ERR'},1,126,128,130,255],'WARN':['Warn','Warning',{'WAR'}],'UNKN':['Unknown','UNKN',"Don't know",'Not sure',{'UNK'}],'JUMP':['Jump',{'JUMP'}],'TOUT':['TimeOut','Time Out','TMOUT','TOUT',{'TOUT'}],'REVD':['Cancel','Canceled','REV','REVD','Revoked','Revoke',{'REVD'}],'LOST':['Lost','Connection Lost','Lost Connection',{'LOST'}],'NFND':['File not found','Not Found','Can not found',{'NFND'},127]},default=False,mode=None):
+def krc(rt=None,chk='_',rtd=None,default=False,mode=None,ext='shell'):
+    global krc_define
+    nrtd=Copy(krc_define,deep=True) if rtd is None else Copy(rtd,deep=True)
+    if ext == 'shell': # python
+        if not IsIn(0,nrtd['GOOD']): nrtd['GOOD'].append(0)
+        if not IsIn(1,nrtd['ERRO']): nrtd['ERRO']=nrtd['ERRO']+[1,126,128,130,255]
+        if not IsIn(127,nrtd['NFND']): nrtd['NFND'].append(127)
+    elif ext == 'python': # python
+        if not IsIn(1,nrtd['GOOD']): nrtd['GOOD'].append(1)# Python's True level
+        if not IsIn(0,nrtd['FAIL']): nrtd['FAIL'].append(0)# Python's False level
     '''
     Shell exit code:
       1   - Catchall for general errors
@@ -4132,14 +4181,14 @@ def krc(rt,chk='_',rtd={'GOOD':[True,'True','Good','Ok','Pass','Sure',{'OK'},0],
     255\* - Exit status out of range
     '''
     if mode == 'get':
-        return rtd
+        return nrtd
     elif mode == 'keys':
-        if isinstance(rtd,dict):
-            return rtd.keys()
+        if isinstance(nrtd,dict):
+            return nrtd.keys()
     def trans(irt):
         type_irt=type(irt)
-        for ii in rtd:
-            for jj in rtd[ii]:
+        for ii in nrtd:
+            for jj in nrtd[ii]:
                 if type(jj) == type_irt and ((type_irt is str and jj.lower() == irt.lower()) or jj == irt):
                     return ii
         return 'UNKN'
@@ -4285,19 +4334,25 @@ def FeedFunc(obj,*inps,**opts):
     return False
 
 def printf(*msg,**opts):
+    global printf_caller_detail
+    global printf_caller_tree
+    global printf_log_base
     date_format=opts.get('date_format','%m/%d/%Y %H:%M:%S' if opts.get('date') else None)
     direct=opts.get('direct',False)
     dsp=opts.get('dsp','a')
     log=opts.get('log',None)
     log_level=opts.get('log_level',8)
-    caller=opts.get('caller','detail' if opts.get('caller_detail') else None)
-    caller_tree=opts.get('caller_tree',opts.get('caller_history'))
+    #caller=opts.get('caller',opts.get('caller_detail',Variable(src='printf_caller_detail',mode='all',parent=1,default=None)))
+    #caller_tree=opts.get('caller_tree',opts.get('caller_history',Variable(src='printf_caller_tree',mode='all',parent=1,default=None)))
+    #printf_log_base=Variable('printf_log_base',parent=1,mode='all')
+    printf_log_base=printf_log_base
+    caller=opts.get('caller',opts.get('caller_detail',printf_caller_detail))
+    caller_tree=opts.get('caller_tree',opts.get('caller_history',printf_caller_tree))
     syslogd=opts.get('syslogd',None)
     new_line=opts.get('new_line',opts.get('newline','' if direct else '\n'))
     form=opts.get('form')
     intro=opts.get('intro',None)
     logfile=opts.get('logfile',[])
-    printf_log_base=Variable('printf_log_base',parent=1,mode='all')
     if log is None and isinstance(printf_log_base,int) and not isinstance(printf_log_base,bool) and isinstance(log_level,int):
 
         if printf_log_base < log_level:
@@ -4336,12 +4391,10 @@ def printf(*msg,**opts):
     if date_format and not syslogd:
         intro_msg='{0} '.format(TIME().Now().strftime(date_format))
     intro_len=len(intro_msg)
-    if caller:
+    if caller or caller_tree:
         arg={'parent':1,'args':True}
-        if caller == 'detail':
-            arg.update({'line_number':True,'filename':True})
-        if caller_tree is True:
-            arg.update({'history':True,'tree':True})
+        if caller: arg.update({'line_number':True,'filename':True})
+        if caller_tree: arg.update({'history':True,'tree':True})
         call_name=FunctionName(**arg)
         if call_name:
             intro_msg=intro_msg+WrapString(Join(call_name,'\n'),fspace=0, nspace=len(intro_msg),mode='space')+': '
