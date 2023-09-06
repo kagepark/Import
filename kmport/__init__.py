@@ -4341,11 +4341,10 @@ def printf(*msg,**opts):
     direct=opts.get('direct',False)
     dsp=opts.get('dsp','a')
     log=opts.get('log',None)
-    log_level=opts.get('log_level',8)
+    log_level=opts.get('log_level',None)
     #caller=opts.get('caller',opts.get('caller_detail',Variable(src='printf_caller_detail',mode='all',parent=1,default=None)))
     #caller_tree=opts.get('caller_tree',opts.get('caller_history',Variable(src='printf_caller_tree',mode='all',parent=1,default=None)))
     #printf_log_base=Variable('printf_log_base',parent=1,mode='all')
-    printf_log_base=printf_log_base
     caller=opts.get('caller',opts.get('caller_detail',printf_caller_detail))
     caller_tree=opts.get('caller_tree',opts.get('caller_history',printf_caller_tree))
     syslogd=opts.get('syslogd',None)
@@ -4422,10 +4421,13 @@ def printf(*msg,**opts):
     # Save msg to file
     if 'f' in dsp or 'a' in dsp:
         for ii in logfile:
-            if ii and os.path.isdir(os.path.dirname(ii)):
-                log_p=True
-                with open(ii,'a+') as f:
-                    f.write(msg_str+new_line)
+            if isinstance(ii,str) and ii:
+                ii_d=os.path.dirname(ii)
+                ii_d=ii_d if ii_d else '.' # If just filename then directory to .(current directory)
+                if ii and os.path.isdir(ii_d):
+                    log_p=True
+                    with open(ii,'a+') as f:
+                        f.write(msg_str+new_line)
     # print msg to screen
     if (log_p is False and 'a' in dsp) or 's' in dsp or 'e' in dsp:
          if 'e' in dsp:
