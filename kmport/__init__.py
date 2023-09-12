@@ -2473,7 +2473,8 @@ def Get(*inps,**opts):
                 elif method=='FILE':
                     rt=obj.FILES.getlist(nkey,default)
                     if not IsNone(rt):
-                        return OutFormat(rt,out='raw',peel=peel,strip=strip,default=default)
+                        #return OutFormat(rt,out='raw',peel=peel,strip=strip,default=default)
+                        return OutFormat(rt,out=out,peel=peel,strip=strip,default=default)
                     #if not IsNone(rt): return rt
                     #rt=obj.FILES.get(nkey,default)
                     #if not IsNone(rt): return rt
@@ -2482,11 +2483,13 @@ def Get(*inps,**opts):
                     rt=obj.FILES.getlist(nkey)
                     #rt2=obj.FILES.get(nkey)
                     if not IsNone(rt):
-                        return OutFormat(rt,out='raw',peel=peel,strip=strip,default=default)
+                        #return OutFormat(rt,out='raw',peel=peel,strip=strip,default=default)
+                        return OutFormat(rt,out=out,peel=peel,strip=strip,default=default)
                     rt=obj.POST.getlist(nkey)
                     #rt=obj.POST.get(nkey)
                     if not IsNone(rt):
-                        return OutFormat(rt,out='raw',peel=peel,strip=strip,default=default)
+                        #return OutFormat(rt,out='raw',peel=peel,strip=strip,default=default)
+                        return OutFormat(rt,out=out,peel=peel,strip=strip,default=default)
                     return Default(obj,default)
             if idx_type == 'str':
                 return _web_data(obj,nidx,method,default)
