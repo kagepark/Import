@@ -3373,18 +3373,10 @@ def rshell_tmp(cmd,timeout=None,ansi=True,path=None,progress=False,progress_pre_
         return p.returncode, ansi_escape.sub('',out).rstrip(), ansi_escape.sub('',err).rstrip(),start_time.Init(),start_time.Now(int),cmd,path
 
 def IsCancel(func,**opts):
-    return IsBreak(func,**opts)
+    return IsTrue(func,requirements=['cancel','canceling','REVD','stop','break'],**opts)
 
 def IsBreak(func,**opts):
-    #ttt=type(func).__name__
-    #if ttt in ['function','instancemethod','method']:
-    if IsFunction(func):
-        opts['parent']=3 if 'parent' not in opts else opts['parent']+2
-        if FeedFunc(func,**opts):
-            return True
-    elif type(func).__name__ in ['bool','str'] and IsIn(func,[True,'cancel','canceling','REVD','stop','break']):
-        return True
-    return False
+    return IsTrue(func,requirements=['cancel','canceling','REVD','stop','break'],**opts)
 
 def sprintf(string,*inps,**opts):
     '''
@@ -4351,14 +4343,35 @@ def printf(*msg,**opts):
     caller=opts.get('caller',opts.get('caller_detail',printf_caller_detail))
     caller_tree=opts.get('caller_tree',opts.get('caller_history',printf_caller_tree))
     syslogd=opts.get('syslogd',None)
-    new_line=opts.get('new_line',opts.get('newline','' if direct else '\n'))
-    form=opts.get('form')
+    new_line='' if direct else opts.get('new_line',opts.get('newline',opts.get('end','\n')))
+    #form=opts.get('form')
     intro=opts.get('intro',None)
     logfile=opts.get('logfile',[])
-    if log is None and isinstance(printf_log_base,int) and not isinstance(printf_log_base,bool) and isinstance(log_level,int):
 
-        if printf_log_base < log_level:
-            return
+    # save msg(removed log_file information) to syslogd 
+    if syslogd:
+        # Make a message to single line
+        tmp_str=''
+        for ii in msg:
+            if not isinstance(ii,str):
+                tmp_str=tmp_str if tmp_str else ColorStr(Str(pprint.pformat(ii),default='org'),**opts)
+            else:
+                tmp_str=tmp_str if tmp_str else ColorStr(Str(ii,default='org'),**opts)
+        if syslogd in ['INFO','info']:
+            syslog.syslog(syslog.LOG_INFO,tmp_str)
+        elif syslogd in ['KERN','kern']:
+            syslog.syslog(syslog.LOG_KERN,tmp_str)
+        elif syslogd in ['ERR','err']:
+            syslog.syslog(syslog.LOG_ERR,tmp_str)
+        elif syslogd in ['CRIT','crit']:
+            syslog.syslog(syslog.LOG_CRIT,tmp_str)
+        elif syslogd in ['WARN','warn']:
+            syslog.syslog(syslog.LOG_WARNING,tmp_str)
+        elif syslogd in ['DBG','DEBUG','dbg','debug']:
+            syslog.syslog(syslog.LOG_DEBUG,tmp_str)
+        else:
+            syslog.syslog(tmp_str)
+
     #Logfile
     if isinstance(logfile,str):
         logfile=logfile.split(',')
@@ -4372,22 +4385,7 @@ def printf(*msg,**opts):
                 else:
                     logfile=logfile+logfile_list[1].split(',')
                 msg.remove(ii)
-    # save msg(removed log_file information) to syslogd 
-    if syslogd:
-        if syslogd in ['INFO','info']:
-            syslog.syslog(syslog.LOG_INFO,msg)
-        elif syslogd in ['KERN','kern']:
-            syslog.syslog(syslog.LOG_KERN,msg)
-        elif syslogd in ['ERR','err']:
-            syslog.syslog(syslog.LOG_ERR,msg)
-        elif syslogd in ['CRIT','crit']:
-            syslog.syslog(syslog.LOG_CRIT,msg)
-        elif syslogd in ['WARN','warn']:
-            syslog.syslog(syslog.LOG_WARNING,msg)
-        elif syslogd in ['DBG','DEBUG','dbg','debug']:
-            syslog.syslog(syslog.LOG_DEBUG,msg)
-        else:
-            syslog.syslog(msg)
+
     # Make a Intro
     intro_msg=''
     if date_format and not syslogd:
@@ -4408,21 +4406,27 @@ def printf(*msg,**opts):
     # Make a msg
     msg_str=''
     for ii in msg:
-        if form:
+        if not isinstance(ii,str):
             msg_str=msg_str if msg_str else intro_msg + ColorStr(WrapString(Str(pprint.pformat(ii),default='org'),fspace=intro_len if msg_str else 0, nspace=intro_len,mode='space'),**opts)
         else:
             msg_str=msg_str if msg_str else intro_msg + ColorStr(WrapString(Str(ii,default='org'),fspace=intro_len if msg_str else 0, nspace=intro_len,mode='space'),**opts)
 
+    #When having Log function then give the data to log function
     log_p=False
-    #Log function
     if Type(log,'function','method'):
         try:
             FeedFunc(log,msg_str,**opts)
             log_p=True
         except:
             pass
-    # Save msg to file
-    if 'f' in dsp or 'a' in dsp:
+
+    if not log_p: #If did not done with log function
+        # Save to file or print to screen filter with log_level and already logging with log function or not.
+        if IsInt(printf_log_base) and IsInt(log_level):
+            if printf_log_base < log_level:
+                return
+        # Save msg to file when defined logfile
+        #if ('f' in dsp or 'a' in dsp) and logfile:
         for ii in logfile:
             if isinstance(ii,str) and ii:
                 ii_d=os.path.dirname(ii)
@@ -4431,13 +4435,15 @@ def printf(*msg,**opts):
                     log_p=True
                     with open(ii,'a+') as f:
                         f.write(msg_str+new_line)
-    # print msg to screen
-    if (log_p is False and 'a' in dsp) or 's' in dsp or 'e' in dsp:
-         if 'e' in dsp:
-             StdErr(msg_str+new_line)
-         else:
-             StdOut(msg_str+new_line)
-    # return msg
+        # print msg to screen when did not done with logfile or log function
+        if (log_p is False and 'a' in dsp) or 's' in dsp or 'e' in dsp:
+             if 'e' in dsp:
+                 StdErr(msg_str+new_line)
+             elif 'c' in dsp: #Display to console (it also work with Robot Framework)
+                 print(msg_str+new_line,end='',file=sys.__stdout__)
+             else: # Print out on screen
+                 StdOut(msg_str+new_line)
+    # return msg when required return whatever condition
     if 'r' in dsp:
          return msg_str
 
@@ -4826,6 +4832,26 @@ def Pop(src,key,default=None):
                 return src.pop(key)
     if not IsNone(default):
         return default
+
+def IsTrue(condition,requirements=None,**opts):
+    condition_type=type(condition).__name__
+    if IsFunction(condition):
+        opts['parent']=3 if 'parent' not in opts else opts['parent']+2
+        if FeedFunc(condition,**opts):
+            return True
+    elif condition_type == 'str':
+        try:
+            return eval(condition)
+        except:
+            if isinstance(requirements,(tuple,list)):
+                if IsIn(condition ,requirements): return True
+            elif requirements is not None:
+                if condition == requirements : return True
+    elif condition_type == 'bool':
+        return condition
+    return False
+
+
 
 #if __name__ == "__main__":
 #    # Integer
