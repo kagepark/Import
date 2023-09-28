@@ -308,6 +308,22 @@ def Str(src,**opts):
     if tuple_data: return tuple(src)
     return src
 
+def Strings(*src,excludes=None):
+    out=Join(*src,symbol=' ')
+    if isinstance(excludes,(str,list,tuple)) and isinstance(out,str):
+        if isinstance(excludes,str):
+            excludes=excludes.split(',')
+        nsrc_a=out.split(' ')
+        out_a=[]
+        for i in nsrc_a:
+            if i not in excludes:
+                out_a.append(i)
+        if len(out_a) > 0:
+            return Join(*out_a,symbol=' ')
+        else:
+            return ''
+    return out
+
 def Default(a,b=None):
     '''
     Make a return value
@@ -963,6 +979,37 @@ def BoolOperation(a,mode=bool):
         if mode in ['opposition','opposit']:
             return not a
 
+def Bool(src,want=True,auto_bool=False,shell_code=True):
+    if want in [True,False,'True','False',b'True',b'False']:
+        if type(want).__name__ in ['str','bytes']: want=eval(want) # convert string bool to bool
+        if auto_bool and isinstance(src, (list,tuple,dict)) and src: # convert list,tuple,dict to bool
+            if isinstance(src,(list,tuple)):
+                src=src[0]
+            elif isinstance(src,dict):
+                src=src.get('rc')
+        elif src in [True,False,'True','False',b'True',b'False']: # Convert string bool to bool
+            if type(src).__name__ in ['str','bytes']: src=eval(src)
+        if shell_code and isinstance(src,int) and not isinstance(src,bool): # Convert shell rc to bool
+            src=True if src == 0 else False
+        return src == want
+    elif want in [str,'str',int,'int',dict,'dict',list,'list',tuple,'tuple',None,'None']:
+        if type(want).__name__ in ['str','bytes']: want=eval(want) # convert string bool to bool
+        if want is None:
+            if src == '': src=None
+            return src == want
+        else:
+            return isinstance(src,want)
+    return False
+
+def PyDefine(aa):
+    if aa in [None,"'None'",'"None"','None']:
+        return None
+    elif aa in [True,"'True'",'"True"','True']:
+        return True
+    elif aa in [False,"'False'",'"False"','False']:
+        return False
+    return aa
+
 def WhiteStrip(src,mode=True):
     '''
     remove multi space to single space, remove first and end space
@@ -1360,7 +1407,7 @@ def Install(module,install_account='',mode=None,upgrade=False,version=None,force
         install_cmd=[sys.executable,'-m','pip','install']
     else:
         install_cmd=['python3','-m','pip','install']
-    if PyVer(3,8,'<'): 
+    if PyVer(3,8,'>='): 
         import pkg_resources
         pkn=pkg_resources.working_set.__dict__.get('by_key',{}).get(install_name)
         if pkn:
@@ -1457,6 +1504,9 @@ def ModName(src):
 def ModLoad(inp,force=False,globalenv=Global(),unload=False,re_load=False):
     '''
     Load python module
+    0: Loaded
+    1: Load error (May be need install or Loading error with any critical issue)
+    2: Unload or Not loaded
     '''
     def Reload(name):
         if isinstance(name,str):
@@ -1591,6 +1641,8 @@ def Import(*inps,**opts):
         for ii in base_lib_path:
             if os.path.isdir(ii) and not ii in sys.path:
                 sys.path.append(ii)
+    if os.getcwd() not in sys.path: sys.path=[os.getcwd()]+sys.path
+
     if not virtual_env and install_account in ['user','--user','personal','myaccount','account','myself']:
         install_account='--user'
     else:
@@ -1612,7 +1664,7 @@ def Import(*inps,**opts):
     for inp in ninps:
         # if inp is File then automatically get the Path and file name
         # and automatically adding Path to path and import the File Name
-        if os.path.isfile(inp):
+        if os.path.isfile(inp): # special file module
             ipath=os.path.dirname(inp)
             ifile=os.path.basename(inp)
             ifile_a=ifile.split('.')
@@ -1623,11 +1675,18 @@ def Import(*inps,**opts):
             inp=ifile_a[0]
             if ipath not in sys.path:
                 sys.path=[ipath]+sys.path
-
+            loaded,module=ModLoad(inp,force=force,globalenv=globalenv,unload=unload,re_load=re_load)
+            continue
+        else: # Check Local File
+            inp_a=inp.split()
+            inp_chk_file='{}.py'.format(inp_a[1] if inp_a[0] in ['import','from'] else inp)
+            if os.path.isfile(inp_chk_file):
+                loaded,module=ModLoad(inp,force=force,globalenv=globalenv,unload=unload,re_load=re_load)
+                continue
         inp_a=inp.split()
         version=None
         ver_compare=None
-        if len(inp_a) ==2 and inp_a[0] in ['require','requirement']:
+        if len(inp_a) in [1,2] and inp_a[0] in ['require','requirement']:
             if os.path.isfile(inp_a[1]):
                 rq=[]
                 with open(inp_a[1]) as f:
@@ -2126,7 +2185,7 @@ def Uniq(src,default='org',sort=False,strip=False,cstrip=False):
         return tuple(rt) if isinstance(src,tuple) else rt
     return Default(src,default)
 
-def Split(src,sym,default=None,sym_spliter='|'):
+def Split(src,sym,default=None,sym_spliter='|',listonly=False):
     '''
     multipul split then 'a|b|...'
     without "|" then same as string split function
@@ -2153,10 +2212,14 @@ def Split(src,sym,default=None,sym_spliter='|'):
         except:
             pass
     if default in ['org',{'org'}]:
+        if listonly:
+            return [src]
         return src
+    if listonly:
+        return [default]
     return default
 
-def FormData(src,default=None,want_type=None):
+def FormData(*src,default=None,want_type=None,err=False):
     '''
     convert string data to format
     '1' => 1
@@ -2165,6 +2228,26 @@ def FormData(src,default=None,want_type=None):
     "[1,2,3]" => [1,2,3]
     ....
     '''
+    ec=False
+    a_s=''
+    if len(src) > 0:
+        for i in src:
+            a_t=Str(i,default='org')
+            if isinstance(a_t,str):
+                if a_s:
+                    a_s=a_s+''' '''+a_t
+                else:
+                    a_s=a_t
+            else:
+                ec=True
+                break
+    if ec:
+        if err:
+            return False
+        if len(src) == 1:
+            return src[0]
+        return src
+    src=a_s
     form_src=None
     if isinstance(src,str):
         if Type(want_type,'str'): return src
@@ -2622,6 +2705,9 @@ def IpV4(ip,out='str',default=False,port=None,bmc=False,used=False,pool=None,sup
             except:
                 pass
         return rt
+    if port == 'bmc':
+        bmc=True
+        port=None
     if bmc: # Update BMC Port
         default_bmc_port=[623,664,443]
         if not IsNone(port):
@@ -3097,7 +3183,7 @@ class TIME:
     def Datetime(self):
         return datetime()
 
-def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin/bash',path=None,progress=False,progress_pre_new_line=False,progress_post_new_line=False,log=None,env={},full_path=None,remove_path=None,remove_all_path=None,default_timeout=3600,env_out=False,cd=False,decode=None):
+def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin/bash',path=None,progress=False,progress_pre_new_line=False,progress_post_new_line=True,log=None,env={},full_path=None,remove_path=None,remove_all_path=None,default_timeout=3600,env_out=False,cd=False,decode=None):
     '''
     Interactive shell
     path: append the path to existing system path
@@ -3119,29 +3205,31 @@ def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin
             if stop():
                 return
         if progress_pre_new_line:
-            if log:
-                log('\n',direct=True,log_level=1)
-            else:
-                StdOut('\n')
+            printf('\n',direct=True,log=log,log_level=1)
+            #if log:
+            #    log('\n',direct=True,log_level=1)
+            #else:
+            #    StdOut('\n')
         post_chk=False
         i=0
         while True:
             if stop(): break
             if i > progress_interval*10:
                 i=0
-                if log:
-                    log('>',direct=True,log_level=1)
-                else:
-                    StdOut('>')
+                printf('>',direct=True,log=log,log_level=1)
+#                if log:
+#                    log('>',direct=True,log_level=1)
+#                else:
+#                    StdOut('>')
                 post_chk=True
             i+=1
             time.sleep(0.1)
         if post_chk and progress_post_new_line:
-            if log:
-                log('\n',direct=True,log_level=1)
-            else:
-                StdOut('\n')
-
+            printf('\n',direct=True,log=log,log_level=1)
+            #if log:
+            #    log('\n',direct=True,log_level=1)
+            #else:
+            #    StdOut('\n')
     start_time=TIME()
     if not Type(cmd,'str',data=True):
         return -1,'wrong command information :{0}'.format(cmd),'',start_time.Init(),start_time.Init(),start_time.Now(int),cmd,path
@@ -3279,98 +3367,6 @@ def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin
     if env_out:
         return p.returncode, out, err,start_time.Init(),start_time.Now(int),cmd,path,os_env
     return p.returncode, out, err,start_time.Init(),start_time.Now(int),cmd,path
-
-def rshell_tmp(cmd,timeout=None,ansi=True,path=None,progress=False,progress_pre_new_line=False,progress_post_new_line=False,log=None,progress_interval=5,cd=False,default_timeout=3600):
-    def Pprog(stop,progress_pre_new_line=False,progress_post_new_line=False,log=None,progress_interval=5):
-        time.sleep(progress_interval)
-        if stop():
-            return
-        if progress_pre_new_line:
-            if log:
-                log('\n',direct=True,log_level=1)
-            else:
-                StdOut('\n')
-        post_chk=False
-        while True:
-            if stop(): break
-            if log:
-                log('>',direct=True,log_level=1)
-            else:
-                StdOut('>')
-            post_chk=True
-            time.sleep(progress_interval)
-        if post_chk and progress_post_new_line:
-            if log:
-                log('\n',direct=True,log_level=1)
-            else:
-                StdOut('\n')
-
-    start_time=TIME()
-    if not Type(cmd,'str',data=True):
-        return -1,'wrong command information :{0}'.format(cmd),'',start_time.Init(),start_time.Init(),start_time.Now(int),cmd,path
-    Popen=subprocess.Popen
-    PIPE=subprocess.PIPE
-    cmd_env=''
-    cmd_a=cmd.split()
-    cmd_file=cmd_a[0]
-    if cmd_a[0] == 'sudo': cmd_file=cmd_a[1]
-    if path and isinstance(path,str):
-        if os.path.isfile(os.path.join(path,cmd_file)):
-            if cd:
-                cmd_env=cmd_env+'''cd %s && ./'''%(path)
-            else:
-                cmd_env=cmd_env+'''%s/'''%(path)
-        else:
-            cmd_env='''export PATH=%s:${PATH}; '''%(path)
-    elif cmd_file[0] != '/' and cmd_file == os.path.basename(cmd_file) and os.path.isfile(cmd_file):
-        cmd_env='./'
-    p = Popen(cmd_env+cmd , shell=True, stdout=PIPE, stderr=PIPE)
-    out=None
-    err=None
-    if progress:
-        stop_threads=False
-        ppth=Thread(target=Pprog,args=(lambda:stop_threads,progress_pre_new_line,progress_post_new_line,log,progress_interval))
-        ppth.start()
-    if timeout is not None:
-        try:
-            timeout=int(WhiteStrip(timeout))
-        except:
-            timeout=default_timeout
-        if timeout < 3:
-            timeout=3
-    if PyVer(3):
-        try:
-            out, err = p.communicate(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            p.kill()
-            if progress:
-                stop_threads=True
-                ppth.join()
-            return -2, 'Kill process after timeout ({0} sec)'.format(timeout), 'Error: Kill process after Timeout {0}'.format(timeout),start_time.Init(),start_time.Now(int),cmd,path
-    else:
-        if isinstance(timeout,int):
-            countdown=int('{}'.format(timeout))
-            while p.poll() is None and countdown > 0:
-                time.sleep(2)
-                countdown -= 2
-            if countdown < 1:
-                p.kill()
-                if progress:
-                    stop_threads=True
-                    ppth.join()
-                return -2, 'Kill process after timeout ({0} sec)'.format(timeout), 'Error: Kill process after Timeout {0}'.format(timeout),start_time.Init(),start_time.Now(int),cmd,path
-        out, err = p.communicate()
-
-    if progress:
-        stop_threads=True
-        ppth.join()
-    if PyVer(3):
-        out=out.decode("ISO-8859-1")
-        err=err.decode("ISO-8859-1")
-    if ansi:
-        return p.returncode, out.rstrip(), err.rstrip(),start_time.Init(),start_time.Now(int),cmd,path
-    else:
-        return p.returncode, ansi_escape.sub('',out).rstrip(), ansi_escape.sub('',err).rstrip(),start_time.Init(),start_time.Now(int),cmd,path
 
 def IsCancel(func,**opts):
     return IsTrue(func,requirements=['cancel','canceling','REVD','stop','break'],**opts)
@@ -4343,7 +4339,12 @@ def printf(*msg,**opts):
     caller=opts.get('caller',opts.get('caller_detail',printf_caller_detail))
     caller_tree=opts.get('caller_tree',opts.get('caller_history',printf_caller_tree))
     syslogd=opts.get('syslogd',None)
-    new_line='' if direct else opts.get('new_line',opts.get('newline',opts.get('end','\n')))
+    new_line='' if direct else opts.get('new_line',opts.get('newline',opts.get('end',opts.get('end_newline','\n'))))
+    if new_line is True: new_line='\n'
+    elif new_line is False: new_line=''
+    start_newline='' if direct else opts.get('start_newline','')
+    if start_newline is True: start_newline='\n'
+    elif start_newline is False: start_newline=''
     #form=opts.get('form')
     intro=opts.get('intro',None)
     logfile=opts.get('logfile',[])
@@ -4384,7 +4385,12 @@ def printf(*msg,**opts):
                         logfile.append(jj)
                 else:
                     logfile=logfile+logfile_list[1].split(',')
-                msg.remove(ii)
+                if isinstance(msg,tuple):
+                    msg=list(msg)
+                    msg.remove(ii)
+                    msg=tuple(msg)
+                else:
+                    msg.remove(ii)
 
     # Make a Intro
     intro_msg=''
@@ -4397,11 +4403,11 @@ def printf(*msg,**opts):
         if caller_tree: arg.update({'history':True,'tree':True})
         call_name=FunctionName(**arg)
         if call_name:
-            intro_msg=intro_msg+WrapString(Join(call_name,'\n'),fspace=0, nspace=len(intro_msg),mode='space')+': '
+            intro_msg=intro_msg+WrapString(Join(call_name,'\n'),fspace=0, nspace=len(intro_msg)+2,mode='space')+': '
             intro_len=intro_len+len(call_name[-1])+2
     if Type(intro,'str') and intro:
         intro_msg=intro_msg+intro+': '
-        intro_len=intro_len+len(intro)
+        intro_len=intro_len+len(intro)+2
 
     # Make a msg
     msg_str=''
@@ -4415,7 +4421,7 @@ def printf(*msg,**opts):
     log_p=False
     if Type(log,'function','method'):
         try:
-            FeedFunc(log,msg_str,**opts)
+            FeedFunc(log,start_newline+msg_str+new_line,**opts)
             log_p=True
         except:
             pass
@@ -4434,15 +4440,15 @@ def printf(*msg,**opts):
                 if ii and os.path.isdir(ii_d):
                     log_p=True
                     with open(ii,'a+') as f:
-                        f.write(msg_str+new_line)
+                        f.write(start_newline+msg_str+new_line)
         # print msg to screen when did not done with logfile or log function
         if (log_p is False and 'a' in dsp) or 's' in dsp or 'e' in dsp:
              if 'e' in dsp:
-                 StdErr(msg_str+new_line)
+                 StdErr(start_newline+msg_str+new_line)
              elif 'c' in dsp: #Display to console (it also work with Robot Framework)
-                 print(msg_str+new_line,end='',file=sys.__stdout__)
+                 print(start_newline+msg_str+new_line,end='',file=sys.__stdout__)
              else: # Print out on screen
-                 StdOut(msg_str+new_line)
+                 StdOut(start_newline+msg_str+new_line)
     # return msg when required return whatever condition
     if 'r' in dsp:
          return msg_str
@@ -4849,6 +4855,64 @@ def IsTrue(condition,requirements=None,**opts):
                 if condition == requirements : return True
     elif condition_type == 'bool':
         return condition
+    return False
+
+def Append(*a,symbol='',at=-1,want=None): # Append data according to source type
+    if a:                    # list + list
+        s=a[0]               # other => put to list
+        if isinstance(s,bytes): s=Str(s)
+        if want:
+            if want in [list,'list']:
+                if isinstance(s,tuple):
+                    s=list(s)
+                elif not isinstance(s,list):
+                    s=[s]
+                elif isinstance(s,str) and symbol:
+                    s=s.split(symbol)
+            elif want in [str,'str']:
+                if isinstance(s,(list,tuple)):
+                    s=Join(s,symbol=symbol)
+                else:
+                    s='{}'.format(s)
+        sn=type(s).__name__
+        for i in a[1:]:
+            if sn == 'str':
+                if isinstance(i,(list,tuple)):
+                    for x in i:
+                        if at == -1:
+                            s=Join(s,'{}'.format(x),symbol=symbol)
+                        elif at == 0:
+                            s=Join('{}'.format(x),s,symbol=symbol)
+                        else:
+                            if len(s) > at:
+                                s=Join(Join(s[:at],'{}'.format(x),symbol=symbol),s[at:],symbol=symbol)
+                elif isinstance(i,(int,str,bytes)):
+                    if at == -1:
+                        s=Join(s,'{}'.format(Str(i)),symbol=symbol)
+                    elif at == 0:
+                        s=Join('{}'.format(Str(i)),s,symbol=symbol)
+                    else:
+                        if len(s) > at:
+                            s=Join(Join(s[:at],'{}'.format(Str(i)),symbol=symbol),s[at:],symbol=symbol)
+            elif sn == 'list':
+                if isinstance(i,str) and symbol:
+                    i=i.split(symbol)
+                if at == -1 or at == len(s)-1:
+                    if isinstance(i,list):
+                        s=s+i
+                    else:
+                        s.append(i)
+                elif at == 0 or len(s)+at == 0:
+                    if isinstance(i,list):
+                        s=i+s
+                    else:
+                        s=[i]+s
+                elif at >0 and at < len(s):
+                    if isinstance(i,list):
+                        s=s[:at]+i+s[at:]
+                    else:
+                        s=s[:at]+[i]+s[at:]
+        return s
     return False
 
 
