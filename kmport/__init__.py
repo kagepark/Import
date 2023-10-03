@@ -248,34 +248,56 @@ def Bytes2Int(src,encode='utf-8',default='org'):
 def Str(src,**opts):
     '''
     Convert data to String data
+    encode : default 'utf-8','latin1','windows-1252'
+    default : return to original value, if you define default value then return to the defined value
+    mode : auto, if data then convert to string, not then return to the form.
+           'force','fix','fixed' : everything convert to string
+    remove: if you want remove data then define here. (:whitespace: will remove white space to single space)
     '''
     encode=opts.get('encode',None)
     default=opts.get('default','org')
     mode=opts.get('mode','auto')
+    remove=opts.get('remove',None)
     if not isinstance(encode,(str,list,tuple)): encode=['utf-8','latin1','windows-1252']
-    def _byte2str_(src,encode):
+    def _byte2str_(src,encode,remove=None):
+        if isinstance(encode,str): encode=[encode]
         byte,bname=ByteName(src)
         if byte:
             if bname == 'bytes':
-                if isinstance(encode,(list,tuple)):
-                    for i in encode:
-                        try:
-                            return src.decode(i)
-                        except:
-                            pass
-                else:
-                    return src.decode(encode)
-            else:
-                return src.decode(bname)
-        elif type(src).__name__=='unicode':
-            if isinstance(encode,(list,tuple)):
                 for i in encode:
                     try:
-                        return src.encode(i)
+                        if remove:
+                            src_d=src.decode(i)
+                            if IsSame(remove,':whitespace:'):
+                                return ' '.join(src_d.split())
+                            elif remove in src_d:
+                                return src_d.replace(remove,'')
+                        return src.decode(i)
                     except:
                         pass
             else:
-                return src.encode(encode)
+                try:
+                    if remove:
+                        src_d=src.decode(bname)
+                        if IsSame(remove,':whitespace:'):
+                            return ' '.join(src_d.split())
+                        elif remove in src_d:
+                            return src_d.replace(remove,'')
+                    return src.decode(bname)
+                except:
+                    pass
+        elif type(src).__name__=='unicode':
+            for i in encode:
+                try:
+                    if remove:
+                        src_d=src.encode(i)
+                        if IsSame(remove,':whitespace:'):
+                            return ' '.join(src_d.split())
+                        elif remove in src_d:
+                            return src_d.replace(remove,'')
+                    return src.encode(i)
+                except:
+                    pass
         return src
     tuple_data=False
     if isinstance(src,tuple):
@@ -284,23 +306,23 @@ def Str(src,**opts):
     if isinstance(src,list):
         for i in range(0,len(src)):
             if isinstance(src[i],list):
-                src[i]=Str(src[i],encode=encode)
+                src[i]=Str(src[i],encode=encode,remove=remove)
             elif isinstance(src[i],dict):
                 for z in src[i]:
                     if isinstance(src[i][z],(dict,list)):
-                        src[i][z]=Str(src[i][z],encode=encode)
+                        src[i][z]=Str(src[i][z],encode=encode,remove=remove)
                     else:
-                        src[i][z]=_byte2str_(src[i][z],encode)
+                        src[i][z]=_byte2str_(src[i][z],encode,remove)
             else:
                 src[i]=_byte2str_(src[i],encode)
     elif isinstance(src,dict):
         for i in src:
             if isinstance(src[i],(dict,list)):
-                src[i]=Str(src[i],encode=encode)
+                src[i]=Str(src[i],encode=encode,remove=remove)
             else:
-                src[i]=_byte2str_(src[i],encode)
+                src[i]=_byte2str_(src[i],encode,remove)
     else:
-        src=_byte2str_(src,encode)
+        src=_byte2str_(src,encode,remove)
 
     # Force make all to string
     if mode in ['force','fix','fixed']:
@@ -308,29 +330,36 @@ def Str(src,**opts):
     if tuple_data: return tuple(src)
     return src
 
-def Strings(*src,excludes=None):
-    out=Join(*src,symbol=' ')
-    if isinstance(excludes,(str,list,tuple)) and isinstance(out,str):
+def Strings(*src,merge_symbol=' ',excludes=None,split_symbol=' '):
+    '''
+    merge multiple strings to single string
+    merge_symbol=' ' : default ' '. merge with that symbol between strings
+    split_symbol=' ' : default ' '. split each strings with the symbol for check excludes
+    excludes   : excluding strings(str with comma, list, tuple), which is not support space
+    '''
+    out=[]
+    if isinstance(excludes,(str,list,tuple)):
         if isinstance(excludes,str):
             excludes=excludes.split(',')
-        nsrc_a=out.split(' ')
-        out_a=[]
-        for i in nsrc_a:
-            if i not in excludes:
-                out_a.append(i)
-        if len(out_a) > 0:
-            return Join(*out_a,symbol=' ')
-        else:
-            return ''
-    return out
-
+    if isinstance(excludes,(list,tuple)) and excludes:
+        for i in src:
+            i_o=[]
+            if Type(i,('str','bytes')):
+                for ii in Split(i,split_symbol):
+                    if IsIn(ii,excludes): continue
+                    i_o.append(ii)
+            if i_o: out.append(Join(i_o,symbol=split_symbol))
+        return Join(out,symbol=merge_symbol)
+    else:
+        return Join(src,symbol=merge_symbol)
+            
 def Default(a,b=None):
     '''
     Make a return value
     b is org then return original value a
     if b not org then return b 
     '''
-    if b in ['org',{'org'}]:
+    if b in ['org','original',{'org'}]:
         return a
     return b
 
@@ -400,7 +429,7 @@ def Int(i,default='org',sym=None,err=False):
         return rt
     return Default(i,default)
 
-def Join(*inps,symbol='_-_',byte=None,ignore_type=(dict,bool,None),ignore_data=(),append_front='',append_end=''):
+def Join(*inps,symbol='_-_',byte=None,ignore_type=(dict,bool,None),ignore_data=(),append_front='',append_end='',default=None,err=False):
     '''
     Similar as 'symbol'.join([list]) function
     '''
@@ -455,6 +484,8 @@ def Join(*inps,symbol='_-_',byte=None,ignore_type=(dict,bool,None),ignore_data=(
     init_none=None
     for i in src:
         if not isinstance(i,(str,bytes)):
+            if err:
+                return Default(inps,default)
             i='{}'.format(i)
         if byte:
             i=Bytes(i)
@@ -1407,7 +1438,7 @@ def Install(module,install_account='',mode=None,upgrade=False,version=None,force
         install_cmd=[sys.executable,'-m','pip','install']
     else:
         install_cmd=['python3','-m','pip','install']
-    if PyVer(3,8,'>='): 
+    if PyVer('>=','3.2'): 
         import pkg_resources
         pkn=pkg_resources.working_set.__dict__.get('by_key',{}).get(install_name)
         if pkn:
@@ -1867,7 +1898,7 @@ def Frame2Function(obj,default=False):
         return gc.get_referrers(obj.f_code)[0]
     return default
 
-def FunctionName(parent=0,default=False,history=0,tree=False,args=False,line_number=False,filename=False,obj=False,show=False):
+def FunctionName(parent=0,default=False,history=False,tree=False,args=False,line_number=False,full_filename=False,filename=False,obj=False,show=False):
     '''
     Get function name
      - parent
@@ -1876,24 +1907,57 @@ def FunctionName(parent=0,default=False,history=0,tree=False,args=False,line_num
        ...          : going top parent function
      - history      : Getting history (return list)
      - tree         : tree  (return list)
+                    : if exist parent parameter then history from parent to me
        - show       : show tree on screen
      - args         : show arguments
      - line_number  : show line number
      - filename     : show filename
+     - full_filename: show full path filename
      - obj          : Get OBJ (return list)
     '''
-    if parent >= 0:
-        loc=1+parent
-    else:
-        loc=parent
     try:
         my_history=inspect.stack()
     except:
         return default
+    if tree: history=True
     if history:
         rt=[]
         space=''
-        for i in range(len(my_history)-1,0,-1):
+        #for i in range(len(my_history)-1,0,-1):
+        my_history_m=len(my_history)-1
+        my_history_a=[i for i in range(len(my_history)-1)]
+        if isinstance(parent,str):
+            if '-' in parent:
+                parent_a=parent.split('-')
+                try:
+                    parent_e=int(parent_a[0])
+                    #backword
+                    end=parent_e if parent_e < len(my_history_a) else 0
+                except:
+                    end=0
+                    parent_e=my_history_a[end]
+                if len(parent_a) == 2:
+                    try:
+                        parent_s=int(parent_a[1])
+                        #backword
+                        start=parent_s if parent_s > parent_e and parent_s < len(my_history_a) else -1
+                    except:
+                        start=-1
+                else:
+                    start=-1
+            else:
+                start=-1
+                end=0
+        else:
+            try:
+                parent=int(parent)
+                #backword
+                start=my_history_a[parent] if parent < len(my_history_a) else -1
+                end=0
+            except:
+                start=-1
+                end=0
+        for i in range(my_history_a[start],my_history_a[end],-1):
             if tree:
                 if space:
                     pp='{} -> {}'.format(space,my_history[i].function)
@@ -1910,7 +1974,8 @@ def FunctionName(parent=0,default=False,history=0,tree=False,args=False,line_num
                         if arg: pp=pp+'{}'.format(arg)
                         else: pp=pp+'()'
                     if line_number: pp=pp+' at {}'.format(my_history[i].lineno)
-                    if filename: pp=pp+' in {}'.format(my_history[i].filename)
+                    if full_filename: pp=pp+' in {}'.format(my_history[i].filename)
+                    elif filename: pp=pp+' in {}'.format(os.path.basename(my_history[i].filename))
                     if show:
                         print(pp)
                     else:
@@ -1918,11 +1983,21 @@ def FunctionName(parent=0,default=False,history=0,tree=False,args=False,line_num
                 space=space+'  '
             else:
                 if obj:
-                    rt.append((my_history[i].function,Frame2Function(my_history[i].frame),my_history[i].lineno,my_history[i].filename))
+                    if full_filename:
+                        rt.append((my_history[i].function,Frame2Function(my_history[i].frame),my_history[i].lineno,my_history[i].filename))
+                    else:
+                        rt.append((my_history[i].function,Frame2Function(my_history[i].frame),my_history[i].lineno,os.path.basename(my_history[i].filename)))
                 else:
-                    rt.append((my_history[i].function,my_history[i].lineno,my_history[i].filename))
+                    if full_filename:
+                        rt.append((my_history[i].function,my_history[i].lineno,my_history[i].filename))
+                    else:
+                        rt.append((my_history[i].function,my_history[i].lineno,os.path.basename(my_history[i].filename)))
         return rt
-    else: # single function
+    elif isinstance(parent,int): # single function
+        if parent >= 0:
+            loc=1+parent
+        else:
+            loc=parent
         if len(my_history) <= loc: #out of range
             loc=-1
         if obj:
@@ -1935,7 +2010,8 @@ def FunctionName(parent=0,default=False,history=0,tree=False,args=False,line_num
                 if arg: rt=rt+'{}'.format(arg)
                 else: rt=rt+'()'
             if line_number: rt=rt+' at {}'.format(my_history[loc].lineno)
-            if filename: rt=rt+' in {}'.format(my_history[loc].filename)
+            if full_filename: rt=rt+' in {}'.format(my_history[loc].filename)
+            elif filename: rt=rt+' in {}'.format(os.path.basename(my_history[loc].filename))
             return rt
 
 def FunctionList(obj=None):
@@ -2185,32 +2261,38 @@ def Uniq(src,default='org',sort=False,strip=False,cstrip=False):
         return tuple(rt) if isinstance(src,tuple) else rt
     return Default(src,default)
 
-def Split(src,sym,default=None,sym_spliter='|',listonly=False):
+def Split(src,symbol=None,default=None,sym_spliter='|',listonly=False):
     '''
     multipul split then 'a|b|...'
     without "|" then same as string split function
+    symbol=None or ':whitespace:' : Remote white space and split with single space(' ')
     '''
     #SYMBOL Split
-    if len(sym) > 1:
-        if Type(sym,(str,bytes)) and sym_spliter:
-            if Type(sym,bytes): sym_spliter=Bytes(sym_spliter)
-            else: sym_spliter=Str(sym_spliter)
-            sym=Uniq(sym.split(sym_spliter))
-        try:
-            msym='|'.join(map(re.escape,tuple(sym)))
-            if Type(src,'bytes'): msym=Bytes(msym)
-            else: msym=Str(msym)
-            return re.split(msym,src) # splited by '|' or expression
-        except:
-            pass
-    else:
-        # Normal split
-        try:
-            if Type(src,'bytes'): sym=Bytes(sym)
-            else : sym=Str(sym)
-            return src.split(sym)
-        except:
-            pass
+    if Type(src,(str,bytes)):
+        if symbol is None or IsSame(symbol,':whitespace:'):
+            return src.split()
+        elif not Type(symbol,(str,bytes)):
+            symbol=' '
+        if len(symbol) > 1:
+            if sym_spliter:
+                if Type(symbol,bytes): sym_spliter=Bytes(sym_spliter)
+                else: sym_spliter=Str(sym_spliter)
+                symbol=Uniq(symbol.split(sym_spliter))
+            try:
+                msym='|'.join(map(re.escape,tuple(symbol)))
+                if Type(src,'bytes'): msym=Bytes(msym)
+                else: msym=Str(msym)
+                return re.split(msym,src) # splited by '|' or expression
+            except:
+                pass
+        else:
+            # Normal split
+            try:
+                if Type(src,'bytes'): symbol=Bytes(symbol)
+                else : symbol=Str(symbol)
+                return src.split(symbol)
+            except:
+                pass
     if default in ['org',{'org'}]:
         if listonly:
             return [src]
@@ -3199,37 +3281,26 @@ def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin
             if ii in os_env:
                 os_env[ii]=env[ii]
 
-    def pprog(stop,progress_pre_new_line=False,progress_post_new_line=False,log=None,progress_interval=5):
+    def pprog(stop,progress_pre_new_line=False,progress_post_new_line=True,log=None,progress_interval=5):
         for i in range(0,progress_interval*10):
             time.sleep(0.1)
             if stop():
                 return
         if progress_pre_new_line:
             printf('\n',direct=True,log=log,log_level=1)
-            #if log:
-            #    log('\n',direct=True,log_level=1)
-            #else:
-            #    StdOut('\n')
-        post_chk=False
+        printed=False
         i=0
         while True:
             if stop(): break
             if i > progress_interval*10:
                 i=0
                 printf('>',direct=True,log=log,log_level=1)
-#                if log:
-#                    log('>',direct=True,log_level=1)
-#                else:
-#                    StdOut('>')
-                post_chk=True
+                printed=True
             i+=1
             time.sleep(0.1)
-        if post_chk and progress_post_new_line:
-            printf('\n',direct=True,log=log,log_level=1)
-            #if log:
-            #    log('\n',direct=True,log_level=1)
-            #else:
-            #    StdOut('\n')
+        if progress_post_new_line:
+            if printed:
+                printf('\n',direct=True,log=log,log_level=1)
     start_time=TIME()
     if not Type(cmd,'str',data=True):
         return -1,'wrong command information :{0}'.format(cmd),'',start_time.Init(),start_time.Init(),start_time.Now(int),cmd,path
@@ -4325,6 +4396,35 @@ def FeedFunc(obj,*inps,**opts):
     return False
 
 def printf(*msg,**opts):
+    '''
+    Similar as print()
+    date=True/False              : (True) print date initial line
+    date_format                  : if defined date_format then print date with date_format
+    direct=False/True            : (True) print without newline and any intro information
+    logfile=                     : saveing log to logfile
+    caller_detail=False/True     : (True)print caller information with line number and filename
+        (caller_full_filename=False/True: print full path filename )
+    caller_history=False/True    : (True) print tree of caller history
+    syslogd=                     : logging to syslogd daemon
+    end_newline=True/False       : mark new line at end of the line
+    start_newline=True/False     : mark new line at start of the line
+    intro=<str>                  : log intro string before log data
+    log_level=<int>              : make log-level
+        printf_log_base=6
+        printf('aaaaa',log_level=3) -> this will print
+        printf('bbbbb',log_level=8) -> this not print. but if change printf_log_base to 9 then it will print
+    log=<func>                   : put logging data to log function
+    dsp=                         : Display format
+        a  : auto
+        s  : screen
+        f  : save to file
+        d  : save to debug file
+        e  : log to standard error 
+        c  : console
+        r  : return
+           rt=printf('xxxx',dsp='r')
+           print(rt)
+    '''
     global printf_caller_detail
     global printf_caller_tree
     global printf_log_base
@@ -4398,12 +4498,16 @@ def printf(*msg,**opts):
         intro_msg='{0} '.format(TIME().Now().strftime(date_format))
     intro_len=len(intro_msg)
     if caller or caller_tree:
-        arg={'parent':1,'args':True}
-        if caller: arg.update({'line_number':True,'filename':True})
+        arg={'parent':opts.get('caller_parent',1),'args':True}
+        if caller: arg.update({'line_number':True,'full_filename':opts.get('caller_full_filename',False),'filename':True})
         if caller_tree: arg.update({'history':True,'tree':True})
         call_name=FunctionName(**arg)
         if call_name:
-            intro_msg=intro_msg+WrapString(Join(call_name,'\n'),fspace=0, nspace=len(intro_msg)+2,mode='space')+': '
+            # if line_number and filename then print logging at next line
+            # if date_format then logging's intro length will be date format
+            # if not date_format then loggin's intro length will be stepping length
+            if caller: call_name=call_name+[''] if date_format else call_name+[' ']
+            intro_msg=intro_msg+WrapString(Join(call_name,'\n'),fspace=0, nspace=len(intro_msg),mode='space') + ': '
             intro_len=intro_len+len(call_name[-1])+2
     if Type(intro,'str') and intro:
         intro_msg=intro_msg+intro+': '
@@ -4421,7 +4525,11 @@ def printf(*msg,**opts):
     log_p=False
     if Type(log,'function','method'):
         try:
-            FeedFunc(log,start_newline+msg_str+new_line,**opts)
+            #FeedFunc(log,start_newline+msg_str+new_line,**opts)
+            # Reduce duplicated newline
+            msg_str_log=msg_str if not direct and opts.get('start_newline') in [True,'\n',start_newline] else start_newline + msg_str
+            msg_str_log=msg_str_log if not direct and opts.get('new_line',opts.get('newline',opts.get('end',opts.get('end_newline','\n')))) in [True,'\n',new_line] else msg_str_log+new_line
+            FeedFunc(log,msg_str_log,**opts)
             log_p=True
         except:
             pass
