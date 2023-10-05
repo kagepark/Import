@@ -2961,15 +2961,19 @@ def ping(host,**opts):
             if delay:
                 ok=0
                 if log_format == '.':
-                    StdOut('.')
+#                    StdOut('.')
+                    printf('.',direct=True,log=log,log_level=1)
                 elif log_format == 'ping':
-                    StdOut('{} bytes from {}: icmp_seq={} ttl={} time={} ms\n'.format(delay[1],ip,i,size,round(delay[0]*1000.0,4)))
+#                    StdOut('{} bytes from {}: icmp_seq={} ttl={} time={} ms\n'.format(delay[1],ip,i,size,round(delay[0]*1000.0,4)))
+                    printf('{} bytes from {}: icmp_seq={} ttl={} time={} ms'.format(delay[1],ip,i,size,round(delay[0]*1000.0,4)),log=log,log_level=1)
             else:
                 ok=1
                 if log_format == '.':
-                    StdOut('x')
+                    printf('x',direct=True,log=log,log_level=1)
+#                    StdOut('x')
                 elif log_format == 'ping':
-                    StdOut('{} icmp_seq={} timeout ({} second)\n'.format(ip,i,timeout))
+                    printf('{} icmp_seq={} timeout ({} second)'.format(ip,i,timeout),log=log,log_level=1)
+#                    StdOut('{} icmp_seq={} timeout ({} second)\n'.format(ip,i,timeout))
             if isinstance(count,int) and count:
                 count-=1
                 if count < 1:
@@ -2985,7 +2989,7 @@ def ping(host,**opts):
     else:
         if alive_port:
             return True if IpV4(host,port=alive_port,support_hostname=opts.get('support_hostname',True)) else False
-        log_type=type(log).__name__
+#        log_type=type(log).__name__
         good=False
         Time=TIME()
         gTime=TIME()
@@ -3003,20 +3007,22 @@ def ping(host,**opts):
                       return True
               else:
                   return True
-              if log_type in ['function','method']:
-                  printf('.',direct=True,log=log,log_level=1)
-              elif log_format == '.':
-                  StdOut('.')
+              printf('.',direct=True,log=log,log_level=1)
+              #if log_type in ['function','method']:
+              #    printf('.',direct=True,log=log,log_level=1)
+              #elif log_format == '.':
+              #    StdOut('.')
            else:
               good=False
               gTime.Init()
               if isinstance(keep_bad,int) and keep_bad:
                   if bTime.Out(keep_bad):
                       return False
-              if log_type in ['function','method']:
-                  printf('x',direct=True,log_level=1,log=log)
-              elif log_format == '.':
-                  StdOut('x')
+              printf('x',direct=True,log_level=1,log=log)
+              #if log_type in ['function','method']:
+              #    printf('x',direct=True,log_level=1,log=log)
+              #elif log_format == '.':
+              #    StdOut('x')
            if isinstance(count,int) and count:
                count-=1
                if count < 1: break
@@ -4541,14 +4547,15 @@ def printf(*msg,**opts):
                 return
         # Save msg to file when defined logfile
         #if ('f' in dsp or 'a' in dsp) and logfile:
-        for ii in logfile:
-            if isinstance(ii,str) and ii:
-                ii_d=os.path.dirname(ii)
-                ii_d=ii_d if ii_d else '.' # If just filename then directory to .(current directory)
-                if ii and os.path.isdir(ii_d):
-                    log_p=True
-                    with open(ii,'a+') as f:
-                        f.write(start_newline+msg_str+new_line)
+        if logfile:
+            for ii in logfile:
+                if isinstance(ii,str) and ii:
+                    ii_d=os.path.dirname(ii)
+                    ii_d=ii_d if ii_d else '.' # If just filename then directory to .(current directory)
+                    if ii and os.path.isdir(ii_d):
+                        log_p=True
+                        with open(ii,'a+') as f:
+                            f.write(start_newline+msg_str+new_line)
         # print msg to screen when did not done with logfile or log function
         if (log_p is False and 'a' in dsp) or 's' in dsp or 'e' in dsp:
              if 'e' in dsp:
