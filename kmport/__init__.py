@@ -1,4 +1,11 @@
 #Kage Park
+#Kage's important(basic) libraries
+#Open this source to the public to want
+#If you find any issue then please leave a note on GitHub
+#Basically I designed it should work in AI style.
+#(basically Not crashing, keep doing process with possibly 
+#  data like human understanding, if give a option then it 
+#  can make to crash for the issue)
 import os
 import gc
 import re
@@ -19,9 +26,8 @@ import platform
 import traceback
 import subprocess
 from threading import Thread
-from importlib import import_module
-#import pip
 from datetime import datetime
+from importlib import import_module
 # If importing "from kmport import *" then
 # adding "global  printf_log_base",
 # adding .... then use printf_log_base,... parameter
@@ -405,6 +411,7 @@ def Int(i,default='org',sym=None,err=False):
         False: replace data for possible positions
         True : if convert error in list/tuple then return default
     '''
+    if isinstance(i,bool): return Default(i,default)
     if isinstance(i,int): return i
     i_type=TypeName(i)
     if i_type in ('str','bytes'):
@@ -2827,7 +2834,7 @@ def IpV4(ip,out='str',default=False,port=None,bmc=False,used=False,pool=None,sup
                 return IpV4(socket.gethostbyname(ipstr),out=out,default=default,port=port,bmc=bmc,used=used,pool=pool)
             except:
                 return default
-    elif isinstance(ip,int):
+    elif isinstance(ip,int) and not isinstance(ip,bool):
         try:
             socket.inet_ntoa(struct.pack("!I", ip)) # check int is IP or not
             ip_int=ip
@@ -3705,7 +3712,7 @@ def MacV4(src,**opts):
         if symbol != ':': src=src.replace(':',symbol)
         if case == 'upper': return src.upper()
         return src.lower()
-    elif isinstance(src,int):
+    elif isinstance(src,int) and not isinstance(src,bool):
         if out in [int,'int','number']: return src
         src=int2str(src,symbol)
         if case == 'upper': return src.upper()
