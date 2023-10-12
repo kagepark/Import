@@ -4443,7 +4443,7 @@ def printf(*msg,**opts):
     global printf_log_base
     date_format=opts.get('date_format','%m/%d/%Y %H:%M:%S' if opts.get('date') else None)
     direct=opts.get('direct',False)
-    dsp=opts.get('dsp','a')
+    dsp=opts.get('dsp',opts.get('mode','a'))
     log=opts.get('log',None)
     log_level=opts.get('log_level',None)
     #caller=opts.get('caller',opts.get('caller_detail',Variable(src='printf_caller_detail',mode='all',parent=1,default=None)))
@@ -4460,7 +4460,7 @@ def printf(*msg,**opts):
     elif start_newline is False: start_newline=''
     #form=opts.get('form')
     intro=opts.get('intro',None)
-    logfile=opts.get('logfile',[])
+    logfile=opts.get('logfile',opts.get('log_file',[]))
 
     # save msg(removed log_file information) to syslogd 
     if syslogd:
@@ -4489,6 +4489,10 @@ def printf(*msg,**opts):
     #Logfile
     if isinstance(logfile,str):
         logfile=logfile.split(',')
+    elif isinstance(logfile,tuple)):
+        logfile=list(tuple)
+    if not isinstance(logfile,list):
+        logfile=[]
     for ii in msg:
         if isinstance(ii,str) and ':' in ii:
             logfile_list=ii.split(':')
