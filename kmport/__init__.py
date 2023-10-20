@@ -9,17 +9,22 @@
 import os
 import gc
 import re
+import bz2
 import sys
 import ast
 import copy
 import json
+import gzip
+import zlib
 import time
+import fcntl
 import random
 import shutil
 import codecs
 import socket
 import struct
 import pprint
+import pickle
 import inspect
 import getpass
 import platform
@@ -251,6 +256,114 @@ def Bytes2Int(src,encode='utf-8',default='org'):
         if default in ['org',{'org'}]: return src
         return default
 
+class STR(str):
+    def __init__(self,src,byte=None):
+        if isinstance(byte,bool):
+            if byte:
+                self.src=Bytes(src)
+            else:
+                self.src=Str(src)
+        else:
+            self.src=src
+
+    def Rand(self,length=8,strs=None,mode='*'):
+        return Random(length=length,strs=strs,mode=mode)
+
+    def Cut(self,head_len=None,body_len=None,new_line='\n',out=str):
+        if not isinstance(self.src,str):
+           self.src='''{}'''.format(self.src)
+        return Cut(self.src,head_len,body_len,new_line,out)
+
+    def Space(num=1,fill=' ',mode='space'):
+        return Space(num,fill,mode)
+
+    def Reduce(self,start=0,end=None,sym=None,default=None):
+        if isinstance(self.src,str):
+            if sym:
+                arr=self.src.split(sym)
+                if isinstance(end,int):
+                    return Join(arr[start:end],symbol=sym)
+                else:
+                    return Join(arr[start],symbol=sym)
+            else:
+                if isinstance(end,int):
+                    return self.src[start:end]
+                else:
+                    return self.src[start:]
+        return default
+
+    def Find(self,find,src='_#_',prs=None,sym='\n',pattern=True,default=[],out=None,findall=True,word=False,line_num=False,peel=None):
+        if IsNone(src,chk_val=['_#_'],chk_only=True): src=self.src
+        return FIND(src).Find(find,prs=prs,sym=sym,default=default,out=out,findall=findall,word=word,mode='value',line_num=line_num,peel=peel)
+
+    def Index(self,find,start=None,end=None,sym='\n',default=[],word=False,pattern=False,findall=False,out=None):
+        if not isinstance(self.src,str): return default
+        rt=[]
+        source=self.src.split(sym)
+        for row in range(0,len(source)):
+            for ff in self.Find(find,src=source[row],pattern=pattern,word=word,findall=findall,default=[],out=list):
+                if findall:
+                    rt=rt+[(row,[m.start() for m in re.finditer(ff,source[row])])]
+                else:
+                    idx=source[row].index(ff,start,end)
+                    if idx >= 0:
+                        rt.append((row,idx))
+        if rt:
+            if out in ['tuple',tuple]: return tuple(rt)
+            if out not in ['list',list] and len(rt) == 1 and rt[0][0] == 0:
+                if len(rt[0][1]) == 1:return rt[0][1][0]
+                return rt[0][1]
+            return rt
+        return default
+
+    def Replace(self,replace_what,replace_to,default=None):
+        if isinstance(self.src,str):
+            if replace_what[-1] == '$' or replace_what[0] == '^':
+                return re.sub(replace_what, replace_to, self.src)
+            else:
+                head, _sep, tail = self.src.rpartition(replace_what)
+                return head + replace_to + tail
+        return default
+
+    def RemoveNewline(self,src='_#_',mode='edge',newline='\n',byte=None):
+        if IsNone(src,chk_val=['_#_'],chk_only=True): src=self.src
+        if isinstance(byte,bool):
+            if byte:
+                src=Bytes(src)
+            else:
+                src=Str(src)
+        src_a=Split(src,newline,default=False)
+        if src_a is False:
+            return src
+        if mode in ['edge','both']:
+            if not src_a[0].strip() and not src_a[-1].strip():
+                return Join(src_a[1:-1],symbol=newline)
+            elif not src_a[0].strip():
+                return Join(src_a[1:],symbol=newline)
+            elif not src_a[-1].strip():
+                return Join(src_a[:-1],symbol=newline)
+        elif mode in ['first','start',0]:
+            if not src_a[0].strip():
+                return Join(src_a[1:],symbol=newline)
+        elif mode in ['end','last',-1]:
+            if not src_a[-1].strip():
+                return Join(src_a[:-1],symbol=newline)
+        elif mode in ['*','all','everything']:
+            return Join(src_a,symbol='')
+        return src
+
+    def Tap(self,**opts):
+        fspace=opts.get('space',opts.get('fspace',''))
+        nspace=opts.get('nspace',fspace)
+        sym=opts.get('sym',opts.get('new_line','\n'))
+        default=opts.get('default','org')
+        NFLT=opts.get('NFLT',False)
+        out=opts.get('out',str)
+        mode=opts.get('mode','space')
+        if isinstance(fspace,str):
+            fspace=len(fspace)
+        return WrapString(self.src,fspace=fspace,nspace=nspace,new_line=sym,NFLT=NFLT,mode=mode)
+
 def Str(src,**opts):
     '''
     Convert data to String data
@@ -259,13 +372,30 @@ def Str(src,**opts):
     mode : auto, if data then convert to string, not then return to the form.
            'force','fix','fixed' : everything convert to string
     remove: if you want remove data then define here. (:whitespace: will remove white space to single space)
+    color_code:  <color>[:<attr>]
     '''
     encode=opts.get('encode',None)
     default=opts.get('default','org')
     mode=opts.get('mode','auto')
     remove=opts.get('remove',None)
+    color_code=opts.get('color_code')
+
+    color_db=opts.get('color_db',{'color':
+                                   {'blue': 34, 'grey': 30, 'yellow': 33, 'green': 32, 'cyan': 36, 'magenta': 35, 'white': 37, 'red': 31},
+                                  'bg':{'cyan': 46, 'white': 47, 'grey': 40, 'yellow': 43, 'blue': 44, 'magenta': 45, 'red': 41, 'green': 42},
+                                  'attr':{'reverse': 7, 'blink': 5,'concealed': 8, 'underline': 4, 'bold': 1}})
+
+    if isinstance(color_code,str):
+        color_code_a=color_code.split(':')
+        mode=color_code_a[1] if len(color_code_a) == 2 else None
+        color=color_code_a[0]
+        if mode:
+            color_code=color_db.get(mode,{}).get(color)
+        else:
+            color_code=color_db.get('color',{}).get(color)
+
     if not isinstance(encode,(str,list,tuple)): encode=['utf-8','latin1','windows-1252']
-    def _byte2str_(src,encode,remove=None):
+    def _byte2str_(src,encode,remove=None,color_code=None):
         if isinstance(encode,str): encode=[encode]
         byte,bname=ByteName(src)
         if byte:
@@ -304,6 +434,12 @@ def Str(src,**opts):
                     return src.encode(i)
                 except:
                     pass
+
+        if isinstance(color_code,int) and color_code and IsNone(os.getenv('ANSI_COLORS_DISABLED')):
+            reset='''\033[0m'''
+            fmt_msg='''\033[%dm%s'''
+            msg=fmt_msg % (color_code,src)
+            return msg+reset
         return src
     tuple_data=False
     if isinstance(src,tuple):
@@ -324,11 +460,11 @@ def Str(src,**opts):
     elif isinstance(src,dict):
         for i in src:
             if isinstance(src[i],(dict,list)):
-                src[i]=Str(src[i],encode=encode,remove=remove)
+                src[i]=Str(src[i],encode=encode,remove=remove,color_code=color_code)
             else:
-                src[i]=_byte2str_(src[i],encode,remove)
+                src[i]=_byte2str_(src[i],encode,remove,color_code=color_code)
     else:
-        src=_byte2str_(src,encode,remove)
+        src=_byte2str_(src,encode,remove,color_code=color_code)
 
     # Force make all to string
     if mode in ['force','fix','fixed']:
@@ -561,6 +697,118 @@ def Copy(src,deep=False):
         if isinstance(src,long): return long('{}'.format(src))
     return src
 
+def Insert(src,*inps,**opts):
+    '''
+    src is dict then same as Insert and Update
+    src is list,tuple,str then insert data at 'at'
+    at : 
+      src is list,tuple,str then number
+      src is dict then path (/a/b/c)
+    uniq: src is list ,tuple then make to uniq data
+    err is True then, if any issue then return default value, False then ignore
+    '''
+    at=opts.pop('at',0)
+    default=opts.pop('default',False)
+    err=opts.pop('err',False)
+    force=opts.pop('force',False)
+    uniq=opts.pop('uniq',False)
+    if isinstance(src,(list,tuple,str)):
+        tuple_out=False
+        if isinstance(src,tuple) and force:
+            src=list(src)
+            tuple_out=True
+        if uniq: inps=tuple(set(inps))
+        if isinstance(at,str):
+            if at in ['start','first']: src=list(inps)+src
+            elif at in ['end','last']: src=src+list(inps)
+        elif len(src) == 0:
+            src=list(inps)
+        elif isinstance(at,int) and not isinstance(at,bool) and len(src) > at:
+            src=src[:at]+list(inps)+src[at:]
+        else:
+            if err:
+                return default
+            src=src+list(inps)
+        if tuple_out: return tuple(src)
+    elif isinstance(src,dict):
+        if isinstance(at,str):
+            at_a=at.split('/')
+            for i in at_a:
+                if i in src:
+                    src=src[i]
+                else:
+                    print('KEY({} of at({})) not found in source'.format(at,i))
+                    return False
+        for ii in inps:
+            if isinstance(ii,dict):
+                 src.update(ii)
+        if opts:
+            src.update(opts)
+    return src
+
+def Update(src,*inps,**opts):
+    '''
+    src is dict then same as Insert and Update
+    src is list,tuple,str then replace data at 'at'
+    at : 
+      src is list,tuple,str then number
+      src is dict then path (/a/b/c)
+    err is True then, if any issue then return default value, False then ignore
+    sym for src is string(str). split src with sym
+    '''
+    at=opts.pop('at',0)
+    err=opts.pop('err',False)
+    default=opts.pop('default',False)
+    force=opts.pop('force',False)
+    sym=opts.pop('sym',None)
+    if isinstance(src,(list,tuple,str)):
+        if isinstance(src,str) and sym: src=src.split(sym)
+        tuple_out=False
+        if isinstance(src,tuple) and force:
+            src=list(src)
+            tuple_out=True
+        n=len(src)
+        if n == 0:
+            if err is True:
+                return default
+            else:
+                src=list(inps)
+        elif isinstance(at,int) and n > at:
+            for i in range(0,len(inps)):
+                if n > at+i:
+                    src[at+i]=inps[i]
+                elif err is True:
+                    return default
+                else:
+                    src=src+list(inps)[i:]
+                    break
+        elif isinstance(at,(tuple,list)):
+            if len(inps) == len(at):
+                for i in range(0,len(at)):
+                    if isinstance(at[i],int) and n > at[i]:
+                        src[at[i]]=inps[i]
+                    elif err is True:
+                        return default
+                    else:
+                        src.append(inps[i])
+        if tuple_out: return tuple(src)
+        return src
+    elif isinstance(src,dict):
+        if isinstance(at,str):
+            at_a=at.split('/')
+            for i in at_a:
+                if i in src:
+                    src=src[i]
+                else:
+                    print('KEY({} of at({})) not found in source'.format(at,i))
+                    return False
+        for ii in inps:
+           if isinstance(ii,dict):
+               src.update(ii)
+        if opts:
+           src.update(opts)
+    return src
+
 def TypeName(obj):
     '''
     Get input's Type,Instance's name
@@ -568,7 +816,9 @@ def TypeName(obj):
     obj_dir=dir(obj)
     obj_name=type(obj).__name__
     if obj_name in ['function']: return obj_name
-    if obj_name in ['str']:
+    elif obj_name in ['kDict','kList','DICT']+[name for name, obj in inspect.getmembers(sys.modules[__name__]) if inspect.isclass(obj)]: # Special case name
+        return obj_name
+    elif obj_name in ['str']:
         #try:
         #    obj_tmp=eval(obj)
         #    if type(obj_tmp).__name__ not in ['module','classobj','function','response','request']:
@@ -1188,6 +1438,38 @@ def IsInt(src,mode='all'):
         else:
             return _int_(src)
     return False
+
+class DICT(dict):
+    dot=True
+    def __init__(self, *inps,**opts):
+        for i in inps:
+            if Type(i,('dict','DICT')):
+                for k in i:
+                    self.__setitem__(k,i[k])
+            else:
+                continue
+        if opts:
+            for i in opts:
+                self.__setitem__(i,opts[i])
+    def __getitem__(self, key):
+#        found=self.get(key)
+#        print('found ({})'.format(key),found)
+        return dict.__getitem__(self,key)
+
+    def __setitem__(self, key, value):
+        found=self.get(key,None)
+        if Type(found,('DICT','dict')):
+            # change into dict
+            super(DICT, self).__setitem__(key, found)
+        else:
+            # make a sub dict to dot dict
+            if isinstance(value,dict) and not isinstance(value,DICT):
+                value=DICT(value)
+            # set dot type dict to sub dict
+            super(DICT, self).__setitem__(key, value)
+    # make dot dict
+    if dot:
+        __setattr__, __getattr__ = __setitem__, __getitem__
 
 def Dict(*inp,deepcopy=False,copy=False,**opt):
     '''
@@ -2743,7 +3025,7 @@ def ExceptMessage(msg='',default=None):
         return msg
     return default
 
-def IpV4(ip,out='str',default=False,port=None,bmc=False,used=False,pool=None,support_hostname=False):
+def IpV4(ip,out='str',default=False,port=None,bmc=False,used=False,pool=None,support_hostname=False,ifname=False):
     '''
     check/convert IP
     ip : int, str, ...
@@ -2758,8 +3040,29 @@ def IpV4(ip,out='str',default=False,port=None,bmc=False,used=False,pool=None,sup
       * required port option, but check with single port
       False: default (not check)
       True: Check IP already used the port(return True) or still available(return False)
-    pool: if give IP Pool(tuple) then check the IP is in the POOL or not.
+    pool:
+      Tuple: if give IP Pool(start,end) then check the IP is in the POOL range or not.
+      List : IP is in the Pool list
+    ifname:
+      True: ip will network device name then find ip address
     '''
+    if ifname is True:
+        if not os.path.isdir('/sys/class/net/{}'.format(ip)):
+            return default
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            return socket.inet_ntoa(fcntl.ioctl(
+                s.fileno(),
+                0x8915,  # SIOCGIFADDR
+                struct.pack('256s', ip[:15])
+            )[20:24])
+        except:
+            try:
+                return os.popen('ip addr show {}'.format(ip)).read().split("inet ")[1].split("/")[0]
+            except:
+                return default
+        return socket.gethostbyname(socket.gethostname())
+        
     def IsOpenPort(ip,port):
         '''
         It connectionable port(?) like as ssh, ftp, telnet, web, ...
@@ -2849,8 +3152,21 @@ def IpV4(ip,out='str',default=False,port=None,bmc=False,used=False,pool=None,sup
                 return ip_int
             elif out in ['hex',hex]:
                 return hex(ip_int)
-            elif isinstance(pool,(list,tuple)) and len(pool) == 2:
-                return IpV4(pool[0],out=int) <= ip_int <= IpV4(pool[1],out=int)
+            elif isinstance(pool,tuple):
+                if len(pool) == 1:
+                    return IpV4(pool[0],out=int) <= ip_int
+                elif len(pool) == 2:
+                    if not pool[0] and pool[1]:
+                        return ip_int <= IpV4(pool[1],out=int)
+                    elif not pool[1] and pool[0]:
+                        return IpV4(pool[0],out=int) <= ip_int 
+                    elif pool[0] and pool[1]:
+                        return IpV4(pool[0],out=int) <= ip_int <= IpV4(pool[1],out=int)
+                    else:
+                        return default
+            elif isinstance(pool,list):
+                pool=[IpV4(i,out=int) for i in pool]
+                return ip_int in pool
             else: #default to str
                 ip_str=socket.inet_ntoa(struct.pack("!I", ip_int))
                 if port: # If bing Port then check the port
@@ -2952,6 +3268,7 @@ def ping(host,**opts):
         ok=1
         i=1
         ping_cmd=find_executable('ping')
+        printed=False
         while True:
             if IsBreak(cancel_func):
                 return -1,'canceled'
@@ -2968,23 +3285,27 @@ def ping(host,**opts):
             if delay:
                 ok=0
                 if log_format == '.':
-#                    StdOut('.')
                     printf('.',direct=True,log=log,log_level=1)
+                    printed=True
+                elif log_format == 'd':
+                    printf('.',direct=True,log=log,log_level=1,dsp='d')
+                    printed=True
                 elif log_format == 'ping':
-#                    StdOut('{} bytes from {}: icmp_seq={} ttl={} time={} ms\n'.format(delay[1],ip,i,size,round(delay[0]*1000.0,4)))
                     printf('{} bytes from {}: icmp_seq={} ttl={} time={} ms'.format(delay[1],ip,i,size,round(delay[0]*1000.0,4)),log=log,log_level=1)
             else:
                 ok=1
                 if log_format == '.':
                     printf('x',direct=True,log=log,log_level=1)
-#                    StdOut('x')
+                    printed=True
+                elif log_format == 'd':
+                    printf('x',direct=True,log=log,log_level=1,dsp='d')
+                    printed=True
                 elif log_format == 'ping':
                     printf('{} icmp_seq={} timeout ({} second)'.format(ip,i,timeout),log=log,log_level=1)
-#                    StdOut('{} icmp_seq={} timeout ({} second)\n'.format(ip,i,timeout))
             if isinstance(count,int) and count:
                 count-=1
                 if count < 1:
-                    return ok,'{} is {}'.format(ip,'alive' if ok == 0 else 'death')
+                    return ok,'{} is {}'.format(ip,'alive' if ok == 0 else 'death'),printed
             i+=1
             time.sleep(interval)
 
@@ -2996,45 +3317,50 @@ def ping(host,**opts):
     else:
         if alive_port:
             return True if IpV4(host,port=alive_port,support_hostname=opts.get('support_hostname',True)) else False
-#        log_type=type(log).__name__
         good=False
         Time=TIME()
         gTime=TIME()
         bTime=TIME()
+        printed=False
         while True:
            rc=do_ping(host,timeout=1,size=64,count=1,log_format=None,cancel_func=cancel_func)
+           printed=rc[-1]
            if rc[0] == -1:
               printf('- ping({}) - Canceled/Stopped ping by cancel signal'.format(host),log=log,dsp='f')
+              if printed: 
+                 printf('\n',direct=True,log_level=1,log=log, dsp='d' if log_format =='d' else 's')
               return 0 # Cancel return value
            elif rc[0] == 0:
               good=True
               bTime.Init()
               if isinstance(keep_good,int) and keep_good:
                   if gTime.Out(keep_good):
+                      if printed: 
+                         printf('\n',direct=True,log_level=1,log=log, dsp='d' if log_format =='d' else 's')
                       return True
               else:
+                  if printed: 
+                     printf('\n',direct=True,log_level=1,log=log, dsp='d' if log_format =='d' else 's')
                   return True
-              printf('.',direct=True,log=log,log_level=1)
-              #if log_type in ['function','method']:
-              #    printf('.',direct=True,log=log,log_level=1)
-              #elif log_format == '.':
-              #    StdOut('.')
+              printf('.',direct=True,log=log,log_level=1,dsp='d' if log_format =='d' else 's')
+              printed=True
            else:
               good=False
               gTime.Init()
               if isinstance(keep_bad,int) and keep_bad:
                   if bTime.Out(keep_bad):
+                      if printed: 
+                         printf('\n',direct=True,log_level=1,log=log, dsp='d' if log_format =='d' else 's')
                       return False
-              printf('x',direct=True,log_level=1,log=log)
-              #if log_type in ['function','method']:
-              #    printf('x',direct=True,log_level=1,log=log)
-              #elif log_format == '.':
-              #    StdOut('x')
+              printf('x',direct=True,log_level=1,log=log, dsp='d' if log_format =='d' else 's')
+              printed=True
            if isinstance(count,int) and count:
                count-=1
                if count < 1: break
            if Time.Out(timeout): break
            TIME().Sleep(interval)
+        if printed: 
+           printf('\n',direct=True,log_level=1,log=log, dsp='d' if log_format =='d' else 's')
         return good
 
 class WEB:
@@ -3679,11 +4005,27 @@ def MacV4(src,**opts):
     case : 
       upper : upper case output
       lower : lower case output
+    ifname :
+      True : src is Network interface Name
     '''
     symbol=opts.get('symbol',opts.get('sym',':'))
     default=opts.get('default',False)
     out=opts.get('out','str')
     case=opts.get('case','lower')
+    # From ifname (network device name)
+    ifname=opts.get('ifname',False)
+    if ifname is True and isinstance(src,str):
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            if PyVer(3):
+                info = fcntl.ioctl(s.fileno(), 0x8927,  struct.pack('256s', Bytes(src[:15],encode='utf-8')))
+                return ':'.join(['%02x' % char for char in info[18:24]])
+            else:
+                info = fcntl.ioctl(s.fileno(), 0x8927,  struct.pack('256s', src[:15]))
+                return ':'.join(['%02x' % ord(char) for char in info[18:24]])
+        except:
+            return default
+
     def int2str(src,sym):
         return ':'.join(['{}{}'.format(a, b) for a, b in zip(*[iter('{:012x}'.format(src))]*2)])
     def str2int(src):
@@ -3718,6 +4060,15 @@ def MacV4(src,**opts):
         if case == 'upper': return src.upper()
         return src.lower()
     return default
+
+def GetIfname(mac):
+    net_dir='/sys/class/net'
+    if os.path.isdir(net_dir):
+        dirpath,dirnames,filenames = list(os.walk(net_dir))[0]
+        for dev in dirnames:
+            fmac=cat('{}/{}/address'.format(dirpath,dev),no_end_newline=True)
+            if type(fmac) is str and fmac.strip().lower() == mac.lower():
+                return dev
 
 def Path(*inp,**opts):
     '''
@@ -3757,7 +4108,10 @@ def Path(*inp,**opts):
     default=opts.get('default',False)
     base_dir=None
     if not inp:
-        base_dir=os.environ['PWD']
+        try:
+            base_dir=os.environ['PWD']
+        except:
+            base_dir=os.path.dirname(os.path.realpath((inspect.stack()[-1])[1]))
     elif inp:
         if isinstance(inp[0],str):
             if os.path.isfile(inp[0]):
@@ -3832,36 +4186,95 @@ def Path(*inp,**opts):
     else:
         return full_path
 
-def Cut(src,head_len=None,body_len=None,new_line='\n',out=str):
+def MergeStr(a,b,_type=None):
+    if a is None and b is None:
+        if _type == 'bytes':
+            return b''
+        else:
+            return ''
+    if _type is None:
+        if a is None:
+            return b
+        elif b is None:
+            return a
+        elif Type(a) == Type(b):
+            return a + b
+        elif Type(a) == 'bytes':
+            return  a+Bytes(b)
+        else:
+            return  a+Str(b)
+    else:
+        if _type in [str,'str']:
+            if a is None: return Str(b)
+            elif b is None: return Str(a)
+            return Str(a)+Str(b)
+        else:
+            if a is None: return Bytes(b)
+            elif b is None: return Bytes(a)
+            return Bytes(a)+Bytes(b)
+
+def Cut(src,head_len=None,body_len=None,new_line='\n',out=str,front_space=None,newline_head=False):
     '''
-    Cut string
+    Cut string with length
     head_len : int : first line length (default None)
                if body_len is None then everything cut same length with head_len
     body_len : int : line length after head_len (default None)
+               without head_len(None) then swap between head_len and body_len
     new_line : default linux new line
+    front_space: 
+        True : fill out space to gap between head_len  and body_len (same as 0)
+        False/None : No space
+        #    : fill out space of # at front of all strings (head and body)
+        '  ' : same as number(#)
+    newline_head:
+        True : each first line has head condition
+        False: first line has head condition of entire source (src)
     out=
         str  : output to string with new_line (default)
         list : output to list instead new_line
     '''
-    if not isinstance(src,str): return False
-    source=src.split(new_line)
-    if len(source) == 1 and not head_len or head_len >= len(src):
-       if src and out in ['str',str]: return Join(src,symbol=new_line)
-       return [src]
+    if not Type(src,('str','bytes')): return False
+    source=Split(src,new_line)
+    # swap head_len and body_len when head_len is None
+    if IsNone(head_len) and isinstance(body_len,int):
+        head_len=body_len
+        body_len=None
+
+    if not isinstance(head_len,int) or head_len >= len(src):
+       if src and out in ['str',str,'string']: return src
+       return source # split with new line
+
     rt=[]
+    if isinstance(front_space,bool):
+        front_space=0 if front_space is True else None
+    elif isinstance(front_space,int):
+        front_space=Space(front_space)
+    if not isinstance(front_space,str) and front_space is not None:
+        front_space=None
+    front_space_head=front_space
+    front_space_body=front_space
+    if front_space is not None:
+        if head_len and body_len:
+            if head_len > body_len:
+                front_space_body=Space(len(front_space)+(head_len-body_len))
+            elif head_len < body_len:
+                front_space_head=Space(len(front_space)+(body_len-head_len))
+    _type=type(src)
     for src_idx in range(0,len(source)):
         str_len=len(source[src_idx])
-
-        if not body_len:
-            rt=rt+[source[src_idx][i:i + head_len] for i in range(0, str_len, head_len)]
+        if head_len == 0: head_len=str_len
+        if IsNone(body_len):
+            rt=rt+[MergeStr(front_space,source[src_idx][i:i + head_len],_type=_type) for i in range(0, str_len, head_len)]
         else:
-            if src_idx == 0:
-                rt.append(source[src_idx][0:head_len]) # Take head
+            if src_idx == 0 or newline_head is True:
+                rt.append(MergeStr(front_space_head,source[src_idx][0:head_len],_type=_type)) # Take head
                 if str_len > head_len:
-                    rt=rt+[source[src_idx][head_len:][i:i + body_len] for i in range(0, str_len-head_len, body_len)]
+                    rt=rt+[MergeStr(front_space_body,source[src_idx][head_len:][i:i + body_len],_type=_type) for i in range(0, str_len-head_len, body_len)]
             else:
-                rt=rt+[source[src_idx][i:i + body_len] for i in range(0, str_len, body_len)]
-    if rt and out in ['str',str]: return Join(rt,symbol=new_line)
+                rt=rt+[MergeStr(front_space_body,source[src_idx][i:i + body_len],_type=_type) for i in range(0, str_len, body_len)]
+    if out in ['str',str,'string']:
+        if rt: return Join(rt,symbol=new_line)
+        return ''
     return rt
 
 def Space(num=4,fill=None,mode='space',tap=''):
@@ -3975,21 +4388,23 @@ def rm(*args,**opts):
     '''
     if len(args) <= 0: return opts.get('default')
     #List/Tuple
-    if Type(args[0],(list,tuple)):
+    if Type(args[0],('LIST','list','tuple')):
         rt=list(args[0])
-        del_data=opts.get('value',opts.get('data',False))
-        if del_data:
-            for i in args[1:]:
-                if i in rt: rt.remove(i)
-            if Type(args[0],'tuple'): return tuple(rt)
-            return rt
-        else:
-            tmp=[]
-            for i in range(0,len(rt)):
-                if i in args[1:]: continue
-                tmp.append(rt[i])
-            if Type(args[0],'tuple'): return tuple(tmp)
-            return tmp
+        LIST(rt).Delete(*args[1:],find='data' if opts.get('value',opts.get('data',False)) else 'index')
+        return rt
+        #del_data=opts.get('value',opts.get('data',False))
+        #if del_data:
+        #    for i in args[1:]:
+        #        if i in rt: rt.remove(i)
+        #    if Type(args[0],'tuple'): return tuple(rt)
+        #    return rt
+        #else:
+        #    tmp=[]
+        #    for i in range(0,len(rt)):
+        #        if i in args[1:]: continue
+        #        tmp.append(rt[i])
+        #    if Type(args[0],'tuple'): return tuple(tmp)
+        #    return tmp
     #Dict
     elif Type(args[0],dict):
         rt=args[0]
@@ -4041,41 +4456,279 @@ def rm(*args,**opts):
                         rt.pop(i)
         return rt
     else:
-            #File/Directory
-            sub_dir=opts.get('recurring',False)
-            force=opts.get('force',False)
-            if find_executable('rm'):
-                sub_opt=''
-                if sub_dir: sub_opt='-r'
-                if force:
-                    if sub_opt: sub_opt=sub_opt+'f'
-                    else: sub_opt='-f'
-                rshell('rm -i {}'.format(sub_opt)+Join(args,' '),interactive=True)
-            else:
-                for arg in args:
-                    if arg[0] == '-':
-                       if 'r' in arg:
-                          sub_dir=True
-                       if 'f' in arg:
-                          force=True
-                    else:
-                        if os.isfile(arg):
+        #File/Directory
+        sub_dir=opts.get('recurring',False)
+        force=opts.get('force',False)
+        if find_executable('rm'):
+            sub_opt=''
+            if sub_dir: sub_opt='-r'
+            if force:
+                if sub_opt: sub_opt=sub_opt+'f'
+                else: sub_opt='-f'
+            rshell('rm -i {}'.format(sub_opt)+Join(args,' '),interactive=True)
+        else:
+            for arg in args:
+                if arg[0] == '-':
+                   if 'r' in arg:
+                      sub_dir=True
+                   if 'f' in arg:
+                      force=True
+                else:
+                    if os.isfile(arg):
+                        if not force:
+                            yn=cli_input('Delete {} (Y/N)?')
+                            if not isinstance(yn,str) or yn.lower() not in ['y','yes']: continue
+                        #os.remove(arg)
+                        os.unlink(arg)
+                    elif os.isdir(arg):
+                        if sub_dir:
                             if not force:
                                 yn=cli_input('Delete {} (Y/N)?')
                                 if not isinstance(yn,str) or yn.lower() not in ['y','yes']: continue
-                            #os.remove(arg)
-                            os.unlink(arg)
-                        elif os.isdir(arg):
-                            if sub_dir:
-                                if not force:
-                                    yn=cli_input('Delete {} (Y/N)?')
-                                    if not isinstance(yn,str) or yn.lower() not in ['y','yes']: continue
-                                shutil.rmtree(arg)
-                            else:
-                                print('''can't delete directory:{}'''.format(arg))
+                            shutil.rmtree(arg)
                         else:
-                            print('''can't delete {}'''.format(arg))
+                            print('''can't delete directory:{}'''.format(arg))
+                    else:
+                        print('''can't delete {}'''.format(arg))
     return opts.get('default')
+
+#New CLASS
+#class NAME():
+#    def __init__(self,...): #Initialize data
+#        self.data=....
+#    def __new__(cls,*inps): ???
+#        ....
+#    def __repr__(self): # reply self.data back to the Class's output a=<NAME>(['a']), return the data to a
+#        return repr(self.data)
+#    def <new func>(self,xxx):
+#        data=self # get original data to data variable
+#        super().<original func name>(xxxx) # using original function
+
+class LIST(list):
+    def __init__(self,*inps,merge=False,uniq=False):
+        if len(inps) == 1 and isinstance(inps[0],(list,tuple)):
+            super().__init__(i for i in inps[0])
+        else:
+            if merge:
+                for i in inps:
+                    if isinstance(i,(type(self),list)):
+                        super().extend(i)
+                    else:
+                        super().append(i)
+            else:
+                super().__init__(i for i in inps)
+        if uniq:
+            self.Uniq()
+
+    def Append(self,*inps,**opts):
+        uniq=opts.get('uniq',False)
+        symbol=opts.get('symbol',':white_space:')
+        path=opts.get('path',False)
+        default=opts.get('default',False)
+        for pp in inps:
+            if Type(pp,('bytes','str')):
+                if symbol == ':white_space:':
+                    pp=pp.strip()
+                    symbol=' '
+                if path: symbol='/'
+                for rp in Split(pp,symbol,default=[]):
+                    if rp == default: continue
+                    if uniq and rp in self: continue
+                    if path:
+                        if rp == '.': continue
+                        if rp == '..' and len(self):
+                            del self[-1]
+                            continue
+                    self.append(rp)
+            else:
+                if uniq and pp in self: continue
+                self.append(pp)
+        return self
+
+    def Uniq(self,*inps,**opts):
+        symbol=opts.get('symbol',opts.get('split',opts.get('split_symbol')))
+        path=opts.get('path',False)
+        if path: symbol='/'
+        default=opts.get('default',False)
+        rt=[]
+        for pp in self + list(inps):
+            if Type(pp,('bytes','str')):
+                if symbol or path:
+                    for rp in Split(pp.strip() if symbol == ':white_space:' else pp,' ' if symbol==':white_space:' else symbol,default=[]):
+                        if rp not in rt and rp != default:
+                            if path:
+                                if rp == '.': continue
+                                if rp == '..' and len(rt):
+                                    del rt[-1]
+                                    continue
+                            rt.append(rp)
+                    continue
+            if pp not in rt: rt.append(pp)
+        super().__init__(i for i in rt)
+        return self
+
+    def Delete(self,*inps,**opts):
+        find=opts.get('find','index')
+        all_data=opts.get('all',opts.get('all_data',opts.get('del_all')))
+        default=opts.get('default',False)
+        if find in ['index','id']: # for keep original index
+            tmp=[]
+            for i in range(0,len(self)):
+                if i in inps: continue
+                tmp.append(self[i])
+            super().__init__(i for i in tmp)
+        else: # Data
+            for i in inps:
+                if all_data:
+                    while i in self:
+                        super().remove(i)
+                elif i in self:
+                    super().remove(i)
+
+    def Get(self,*inps,**opts):
+        if not inps: return self
+        find=opts.get('find','data')
+        default=opts.get('default',None)
+        out=opts.get('out',list)
+        err=opts.get('err',False)
+        if len(self) == 0 and err:
+            return default
+        rt=[]
+        if find in ['index','idx']:
+            rt=self.Index(*inps,default=default,out=out)
+        else:
+            rt=List(*self,idx=inps,mode='err' if err else 'auto',default=default)
+        if rt:
+            if out in [tuple,'tuple']:
+                return tuple(rt)
+            elif IsNone(out,chk_val=[None,'','raw']):
+                if len(rt) == 1: return rt[0]
+            return rt
+        return default
+
+    def Index(self,*inps,**opts):
+        mixed=opts.get('any',opts.get('mixed',opts.get('OR',True)))
+        all_data=opts.get('all',opts.get('ALL',opts.get('everything')))
+        out=opts.get('out')
+        peel=opts.get('peel',True)
+        default=opts.get('default',False)
+        rt=[]
+        for i in inps:
+            tt=[]
+            for z in range(0,len(self)):
+                if Type(i,('str','bytes')):
+                    j=i.replace('*','.+').replace('?','.')
+                    mm=re.compile(j)
+                    if bool(re.match(mm,self[z])):
+                        tt.append(z)
+                        if not all_data: break
+                elif self[z] == i:
+                    tt.append(z)
+                    if not all_data: break
+            if mixed:
+                rt=rt+tt
+            else:
+                rt.append(tuple(tt))
+        return OutFormat(rt,out=out,peel=peel,org=self,default=default)
+
+    def Insert(self,*inps,**opts):
+        at=opts.get('at',-1)
+        default=opts.get('default',False)
+        err=opts.get('err',False)
+        if isinstance(at,str):
+            if at in ['start','first']: root=list(inps)+self
+            elif at in ['end','last']: root=self+list(inps)
+        elif len(self) == 0:
+            root=list(inps)
+        elif isinstance(at,int):
+            if len(self) >= abs(at):
+                if at == -1 or len(self) == at:
+                    root=self+list(inps)
+                else:
+                    if at < -1: at=at+1
+                    root=self[:at]+list(inps)+self[at:]
+            elif len(self) < abs(at):
+                if at > 0:
+                    root=self+list(inps)
+                else:
+                    root=list(inps)+self
+        else:
+            if err:
+                return default
+            root=self+list(inps)
+        super().__init__(i for i in root)
+
+    def Update(self,*inps,**opts):
+        at=opts.get('at',0)
+        err=opts.get('err',False)
+        default=opts.get('default',False)
+        n=len(self)
+        if n == 0:
+            if err is True:
+                return default
+            else:
+                super().__init__(i for i in inps)
+        elif isinstance(at,int) and n > at:
+            for i in range(0,len(inps)):
+                if n > at+i:
+                    super().insert(at+i,inps[i])
+                elif err is True:
+                    return default
+                else:
+                    super().__init__(i for i in self+list(inps)[i:])
+                    break
+        elif isinstance(at,(tuple,list)):
+            if len(inps) == len(at):
+                for i in range(0,len(at)):
+                    if isinstance(at[i],int) and n > at[i]:
+                        super().insert(at[i],inps[i])
+                    elif err is True:
+                        return default
+                    else:
+                        super().append(inps[i])
+
+    def Find(self,*inps,**opts):
+        find=opts.get('find','index')
+        default=opts.get('default',[])
+        rt=[]
+        for i in range(0,len(self)):
+            for j in inps:
+                j=j.replace('*','.+').replace('?','.')
+                mm=re.compile(j)
+                if bool(re.match(mm,self[i])):
+                    if find in ['index','idx']:
+                        rt.append(i)
+                    else:
+                        rt.append(self[i])
+        if len(rt):
+            return rt
+        return default
+
+    def Move2first(self,find):
+        if Type(find,('LIST','list','tuple')):
+            self.Delete(*find,find='data')
+            super().__init__(i for i in list(find)+self)
+        else:
+            self.Delete(*(find,),find='data')
+            super().__init__(i for i in [find]+self)
+        return self
+
+    def Move2end(self,find):
+        if isinstance(find,(list,tuple)):
+            self.Delete(*find,find='data')
+            super().__init__(i for i in self+list(find))
+        else:
+            self.Delete(*(find,),find='data')
+            super().__init__(i for i in self+[find])
+        return self
+
+    def Sort(self,reverse=False,func=None,order=None,field=None,base='key',sym=None):
+        try:
+            super().__init__(i for i in Sort(self,reverse=reverse,func=func,order=order,field=field,base=base,sym=sym))
+            return self
+        except:
+            print('Not support mixed string and int')
+
 
 def List(*inps,**opts):
     '''
@@ -4093,7 +4746,7 @@ def List(*inps,**opts):
      first=<data> : move <data> to first
      end=<data>   : move <data> to end
      find=<data>  : get Index list
-     uniq=False   : Uniq data
+     uniq=False   : Make to Uniq data
      strip=False  : remove white space
      default      : False
      mode 
@@ -4115,7 +4768,7 @@ def List(*inps,**opts):
     mode=opts.get('mode','auto')
     rt=[]
     if len(inps) == 0 : return rt
-    if Type(inps[0],list):
+    if Type(inps[0],('list','LIST')):
         rt=inps[0]
     elif Type(inps[0],tuple):
         if tuple2list:
@@ -4138,6 +4791,8 @@ def List(*inps,**opts):
             rt=rt+tmp
         else:
             rt=list(inps[0])
+    else:
+        rt=[inps[0]]
     for i in inps[1:]:
         if Type(i,list):
             rt=rt+i
@@ -4186,11 +4841,12 @@ def List(*inps,**opts):
         tt=[]
         for i in find:
             for z in range(0,len(rt)):
-                j=i.replace('*','.+').replace('?','.')
-                mm=re.compile(j)
-                if bool(re.match(mm,rt[z])):
-                    tt.append(z)
-                #if rt[z] == i: tt.append(z)
+                if Type(i,('str','bytes')):
+                    j=i.replace('*','.+').replace('?','.')
+                    mm=re.compile(j)
+                    if bool(re.match(mm,rt[z])):
+                        tt.append(z)
+                elif rt[z] == i: tt.append(z)
         return tt
     return rt
 
@@ -4489,7 +5145,7 @@ def printf(*msg,**opts):
     #Logfile
     if isinstance(logfile,str):
         logfile=logfile.split(',')
-    elif isinstance(logfile,tuple)):
+    elif isinstance(logfile,tuple):
         logfile=list(tuple)
     if not isinstance(logfile,list):
         logfile=[]
@@ -5041,6 +5697,848 @@ def Append(*a,symbol='',at=-1,want=None): # Append data according to source type
         return s
     return False
 
+def packet_receive_all(sock,count,progress=False,progress_msg=None,log=None,retry=0,err_scr=True): # Packet
+    if type(sock).__name__ not in ['socket','_socketobject','SSLSocket']:
+        return False,'Is not network socket'
+    buf = b''
+    file_size_d=int('{0}'.format(count))
+    tn=0
+    newbuf=None
+    while count:
+        if progress:
+            if progress_msg:
+                printf('\r{} [ {} % ]'.format(progress_msg,int((file_size_d-count) / file_size_d * 100)),log=log,direct=True)
+            else:
+                printf('\rDownloading... [ {} % ]'.format(int((file_size_d-count) / file_size_d * 100)),log=log,direct=True)
+        try:
+            newbuf = sock.recv(count)
+        except socket.error as e:
+            if tn < retry:
+                printf("[ERROR] timeout value:{} retry: {}/{}\n{}".format(sock.gettimeout(),tn,retry,e),log=log,dsp='e' if err_scr else 'd')
+                tn+=1
+                TIME().Sleep(1)
+                sock.settimeout(retry_timeout)
+                continue
+            return 'error',e
+        if not newbuf: return True,None #maybe something socket issue.
+        buf += newbuf
+        count -= len(newbuf)
+    if progress:
+        if progress_msg:
+            printf('\r{} [ 100 % ]\n'.format(progress_msg),log=log,direct=True)
+        else:
+            printf('\rDownloading... [ 100 % ]\n',log=log,direct=True)
+    return True,buf
+
+def packet_enc(data,key='kg',enc=False):
+    nkey=Bytes2Int(key,encode='utf-8',default='org')
+    pdata=pickle.dumps(data,protocol=2) # common 2.x & 3.x version : protocol=2
+    data_type=Bytes(type(data).__name__[0])
+    if enc and key:
+        # encode code here
+        #enc_tf=Bytes('t') # Now not code here. So, everything to 'f'
+        #pdata=encode(key,pdata)
+        enc_tf=Bytes('f')
+    else:
+        enc_tf=Bytes('f')
+    ndata=struct.pack('>IssI',len(pdata),data_type,enc_tf,nkey)+pdata
+    return ndata
+        
+def packet_head(sock,key='kg'):
+    #Get Header
+    ok,head=packet_receive_all(sock,10)
+    if krc(ok,chk=True):
+        try:
+            st_head=struct.unpack('>IssI',Bytes(head))
+            if st_head[3] == Bytes2Int(key,encode='utf-8',default='org'):
+                return True,st_head[0],st_head[1],st_head[2]
+        except:
+            pass
+    return False,'Fail for read header({})'.format(head),None,None
+
+def packet_dec(data,enc,key='kg'):
+    #ok,size,data_type,enc=packet_head(sock)
+    #ok,data=packet_receive_all(sock,size,....)
+    #real_data=packet_dec(data,enc)
+    if enc == 't':
+        # decode code here
+        # data=decode(data)
+        pass
+    return pickle.loads(data)
+
+def RemoveNewline(src,mode='edge',newline='\n',byte=None):
+    if isinstance(byte,bool):
+        if byte:
+            src=Bytes(src)
+        else:
+            src=Str(src)
+    src_a=Split(src,newline,default=False)
+    if src_a is False:
+        return src
+    if mode in ['edge','both']:
+        if not src_a[0].strip() and not src_a[-1].strip():
+            return Join(src_a[1:-1],symbol=newline)
+        elif not src_a[0].strip():
+            return Join(src_a[1:],symbol=newline)
+        elif not src_a[-1].strip():
+            return Join(src_a[:-1],symbol=newline)
+    elif mode in ['first','start',0]:
+        if not src_a[0].strip():
+            return Join(src_a[1:],symbol=newline)
+    elif mode in ['end','last',-1]:
+        if not src_a[-1].strip():
+            return Join(src_a[:-1],symbol=newline)
+    elif mode in ['*','all','everything']:
+        return Join(src_a,symbol='')
+    return src
+
+def cat(filename,**opts):
+    byte=opts.get('byte',False)
+    newline=opts.get('newline','\n')
+    read_firstline=opts.get('read_firstline',opts.get('head',opts.get('head_line',False)))
+    default=opts.get('default',False)
+    no_edge=opts.get('no_edge',False)
+    no_end_newline=opts.get('no_end_newline',False)
+    file_only=opts.get('file_only',opts.get('fileonly',True))
+    no_all_newline=opts.get('no_all_newline',False)
+    no_first_newline=opts.get('no_first_newline',False)
+
+    if IsNone(filename): return False,'Filename is None'
+    if os.path.isdir(filename): return False,'{} is a directory'.format(filename)
+    if not os.path.exists(filename): return False,'{} not found'.format(filename)
+    try:
+        if read_firstline:  # Readline
+            with open(filename,'rb') as f:
+                data=f.readline()
+        elif not file_only: # Read special file
+            data=os.open(filename,os.O_RDONLY)
+            os.close(data)
+        else: # Read normal file
+            with open(filename,'rb') as f:
+                data=f.read()
+        if not byte:
+           data=Str(data)
+    except:
+        return False,sys.exc_info()[0]
+    return True,RemoveNewline(data,mode='edge' if no_edge else 'end' if no_end_newline else 'first' if no_first_newline else 'all' if no_all_newline else None,newline=newline,byte=byte)
+
+def Compress(data,mode='gzip'):
+    try:
+        if isinstance(data,str) and os.path.isfile(data):
+            with open(data,'rb') as f:
+                data=f.read()
+        if mode == 'lz4':
+            Import('from lz4 import frame')
+            return frame.compress(data)
+        elif mode == 'bz2':
+            return bz2.compress(data)
+        elif mode == 'gzip':
+            return gzip.compress(data,compresslevel=9) #decompress(data)
+        else: #zlib
+            return zlib.compress(data) # decompress(data)
+    except:
+        return False
+
+def Decompress(data,mode='gzip'):
+    try:
+        if isinstance(data,str) and os.path.isfile(data):
+            with open(data,'rb') as f:
+                data=f.read()
+        if mode == 'lz4':
+            Import('from lz4 import frame')
+            return frame.decompress(data)
+        elif mode == 'bz2':
+            return bz2.BZ2Decompressor().decompress(data)
+        elif mode == 'gzip':
+            return gzip.decompress(data)
+        else:
+            return zlib.decompress(data)
+    except:
+        return False
+
+def sizeof(obj):
+    msize = 0
+    ids = set()
+    objects = [obj]
+    while objects:
+        new = []
+        for i in objects:
+            if id(i) not in ids:
+                ids.add(id(i))
+                msize += sys.getsizeof(i)
+                new.append(i)
+        objects = gc.get_referents(*new)
+    return msize
+
+def human_byte(num, unit="K", wunit=None):
+    units = ["B","K","M","G","T","P"]
+    if wunit is None:
+        unit=unit.upper()
+        if num >= 1000:
+            while num >= 1000:
+               sui=units.index(unit)
+               if len(units) <= sui+1:
+                   break
+               num /= 1024.0
+               unit = units[sui+1]
+        elif num < 1:
+            while num < 1: #0.XXX digits
+               sui=units.index(unit)
+               if sui-1 < 0:
+                   break
+               num *= 1024.0
+               unit = units[sui-1]
+    else:
+        wunit=wunit.upper()
+        eui=units.index(wunit)
+        if sui < eui:
+            for i in range(sui,eui):
+                num /= 1024.0
+        elif sui > eui:
+            for i in range(sui,eui,-1):
+                num *= 1024.0
+        unit=wunit
+    if unit == "B":
+        return "%.1f %s" % (num,unit)
+    else:
+        return "%.1f %sB" % (num,unit)
+
+class FILE_W:
+    '''
+    New design to simple
+    sub_dir  : True (Get files in recuring directory)
+    data     : True (Get File Data)
+    md5sum   : True (Get File's MD5 SUM)
+    link2file: True (Make a real file instead sym-link file)
+    file format : size (13)+head({})+data([,,,,,])
+    head: {info{},data_id:x}
+    '''
+    def __init__(self,*inp,**opts):
+        self.root_path=opts.get('root_path',None)
+        if IsNone(self.root_path): self.root_path=Path()
+        self.info=opts.get('info',opts.get('data',{}))
+
+    def List(self,name,sub_dir=False,dirname=False,default=[]):
+        #get directory and each directories' file list
+        if isinstance(name,str):
+            if name[0] == '/':  # Start from root path
+                if os.path.isfile(name) or os.path.islink(name): return os.path.dirname(name),[os.path.basename(name)]
+                if os.path.isdir(name):
+                    if sub_dir:
+                        rt = []
+                        pwd=os.getcwd()
+                        os.chdir(name)
+                        for base, dirs, files in os.walk('.'):
+                            if dirname: rt.extend(os.path.join(base[2:], d) for d in dirs)
+                            rt.extend(os.path.join(base[2:], f) for f in files)
+                        os.chdir(pwd)
+                        return Path(name),rt
+                    else:
+                        return Path(name),[f for f in os.listdir(name)]
+            elif self.root_path: # start from defined root path
+                chk_path=Path(self.root_path,name)
+                if os.path.isfile(chk_path) or os.path.islink(chk_path): return Path(self.root_path),[name]
+                if os.path.isdir(chk_path):
+                    if sub_dir:
+                        rt = []
+                        pwd=os.getcwd()
+                        os.chdir(self.root_path) # Going to defined root path
+                        # Get recuring file list of the name (when current dir then '.')
+                        for base, dirs, files in os.walk(name):
+                            if dirname: rt.extend(os.path.join(base[2:], d) for d in dirs)
+                            rt.extend(os.path.join(base[2:], f) for f in files)
+                        os.chdir(pwd) # recover to the original path
+                        return Path(self.root_path),rt
+                    else:
+                        if name == '.': name=''
+                        return Path(self.root_path),[os.path.join(name,f) for f in os.listdir('{}/{}'.format(self.root_path,name))]
+        return default,[]
+
+    def FileName(self,filename):
+        if isinstance(filename,str):
+            filename_info=os.path.basename(filename).split('.')
+            if 'tar' in filename_info:
+                idx=filename_info.index('tar')
+            else:
+                idx=-1
+            return Join(filename_info[:idx],symbol='.'),Join(filename_info[idx:],symbol='.')
+        return None,None
+
+    def FileType(self,filename,default=False):
+        if not isinstance(filename,str) or not os.path.isfile(filename): return default
+        Import('import magic')
+        aa=magic.from_buffer(open(filename,'rb').read(2048))
+        if aa: return aa.split()[0].lower()
+        return 'unknown'
+
+    def FileInfo(self,filename,roots=None,_type=None,exist=None):
+        if self.info: # from inside data
+            if IsNone(roots): roots=self.FindRP()
+            if not isinstance(filename,str) or IsNone(filename): return False
+            for root in roots:
+                rt=self.info.get(root,{})
+                for ii in filename.split('/'):
+                    if ii not in rt: return False
+                    rt=rt[ii]
+                return rt.get(' i ',False)
+
+        # from real file
+        rt={}
+        if exist is False: return {'exist':False}
+        rt['name'],rt['ext']=self.FileName(filename)
+        if os.path.exists(filename):
+            state=os.stat(filename)
+            rt['exist']=True
+            rt['size']=state.st_size
+            rt['mode']=oct(state.st_mode)[-4:]
+            rt['atime']=state.st_atime
+            rt['mtime']=state.st_mtime
+            rt['ctime']=state.st_ctime
+            rt['gid']=state.st_gid
+            rt['uid']=state.st_uid
+            if IsNone(_type):
+                rt['type']=_type
+            else:
+                if os.path.islink(filename):
+                    rt['type']='link'
+                elif os.path.isdir(filename):
+                    rt['type']='dir'
+                else:
+                    rt['type']=self.FileType(filename)
+        else:
+            rt['exist']=False
+        return rt
+
+    def CdPath(self,base,path):
+        rt=base
+        for ii in path.split('/'):
+            if ii not in rt: return False
+            rt=rt[ii]
+        return rt
+
+    def MkInfo(self,rt,filename=None,**opts):
+        if ' i ' not in rt: rt[' i ']={}
+        rt[' i ']=self.FileInfo(filename,_type=opts.get('type'),exist=opts.get('exist'))
+        if opts: rt[' i '].update(opts)
+
+    def Get(self,*filenames,**opts):
+        base={}
+        filelist={}
+        def MkPath(base,path,root_path):
+            rt=base
+            chk_dir='{}'.format(root_path)
+            for ii in path.split('/'):
+                if ii:
+                    chk_dir=Path(chk_dir,ii)
+                    if ii not in rt:
+                        rt[ii]={}
+                        if os.path.isdir(chk_dir): self.MkInfo(rt[ii],chk_dir,type='dir')
+                    rt=rt[ii]
+            return rt
+
+        def _Get_(root_path,*filenames,**opts):
+            data=opts.get('data',False)
+            md5sum=opts.get('md5sum',False)
+            link2file=opts.get('link2file',False)
+
+            for filename in filenames:
+                tfilename=Path(root_path,filename)
+                if os.path.exists(tfilename):
+                    rt=MkPath(base,filename,root_path)
+                    if os.path.islink(tfilename): # it is a Link File
+                        if os.path.isfile(filename): # it is a File
+                            if link2file:
+                                _md5=None
+                                if data or md5sum: # MD5SUM or Data
+                                    filedata=self.Rw(tfilename,out='byte')
+                                    if filedata[0]:
+                                        if data: rt['data']=filedata[1]
+                                        if md5sum: _md5=md5(filedata[1])
+                                self.MkInfo(rt,filename=tfilename,type=self.FileType(tfilename),md5=_md5)
+                        else:
+                            self.MkInfo(rt,filename=tfilename,type='link',dest=os.readlink(tfilename))
+                    elif os.path.isdir(tfilename): # it is a directory
+                        self.MkInfo(rt,tfilename,type='dir')
+                    elif os.path.isfile(tfilename): # it is a File
+                        _md5=None
+                        if data or md5sum: # MD5SUM or Data
+                            filedata=self.Rw(tfilename,out='byte')
+                            if filedata[0]:
+                                if data: rt['data']=filedata[1]
+                                if md5sum: _md5=md5(filedata[1])
+                        self.MkInfo(rt,filename=tfilename,type=self.FileType(tfilename),md5=_md5)
+                else:
+                    self.MkInfo(rt,filename,exist=False)
+            if base:
+                return {root_path:base}
+            return {}
+
+        if not filenames: filenames=['.']
+        for filename in filenames:
+            root_path,flist=self.List(filename,sub_dir=opts.get('sub_dir',False),dirname=True)
+            if root_path not in filelist: filelist[root_path]=[]
+            filelist[root_path]=filelist[root_path]+flist
+
+        for ff in filelist:
+            self.info.update(_Get_(ff,*filelist[ff],**opts))
+        return self
+
+
+    def GetList(self,dirname=None,roots=None,file_only=False,dir_only=False,sub_dir=False,include_path=False,detail=False): #get file info dict from Filename path
+        if IsNone(roots): roots=self.FindRP()
+        for root in roots:
+            if isinstance(root,str):
+                rt=self.info.get(root,{})
+                if dirname and dirname != root:
+                    rt=self.CdPath(rt,dirname)
+                if isinstance(rt,dict):
+                    for ii in rt:
+                        file_info=rt[ii].get(' i ',{})
+                        dinfo=''
+                        if detail:
+                            dinfo='{} {} {} {} {} {} '.format(file_info.get('mode'),
+                                      1 if file_info.get('type') != 'dir' else len(rt[ii])-1,
+                                      file_info.get('uid'),
+                                      file_info.get('gid'),
+                                      file_info.get('size'),
+                                      file_info.get('mtime'),
+                                      )
+                        if ii == ' i ': continue
+                        if file_info.get('type') == 'dir':
+                            if file_only: continue
+                            print('{}{}/'.format(dinfo,ii))
+                            if sub_dir:
+                                self.GetList(dirname=ii,roots=[root],sub_dir=sub_dir,include_path=True,detail=detail)
+                        elif not dir_only:
+                            if include_path:
+                                print('{}{}/{}'.format(dinfo,dirname,ii))
+                            else:
+                                print('{}{}'.format(dinfo,ii))
+        return False
+
+    def ExecFile(self,filename,bin_name=None,default=None,work_path='/tmp'):
+        # check the filename is excutable in the system bin file then return the file name
+        # if compressed file then extract the file and find bin_name file in the extracted directory
+        #   and found binary file then return then binary file path
+        # if filename is excutable file then return the file path
+        # if not found then return default value
+        exist=self.FileInfo(filename)
+        if exist:
+            if exist['type'] in ['elf'] and exist['mode'] == 33261:return filename
+            if self.Extract(filename,work_path=work_path):
+                if bin_name:
+                    rt=[]
+                    for ff in self.Find(work_path,filename=bin_name):
+                        if self.Info(ff).get('mode') == 33261:
+                            rt.append(ff)
+                    return rt
+        else:
+            if find_executable(filename): return filename
+        return default
+
+    def Basename(self,filename,default=False):
+        if isinstance(filename,str):return os.path.basename(filename)
+        return default
+
+    def Dirname(self,filename,bin_name=None,default=False):
+        if not isinstance(filename,str): return default
+        if IsNone(bin_name): return os.path.dirname(filename)
+        if not isinstance(bin_name,str): return default
+        bin_info=bin_name.split('/')
+        bin_n=len(bin_info)
+        filename_info=filename.split('/')
+        filename_n=len(filename_info)
+        for ii in range(0,bin_n):
+            if filename_info[filename_n-1-ii] != bin_info[bin_n-1-ii]: return default
+        return Join(filename_info[:-bin_n],symbol='/')
+
+    def Find(self,filename,default=[]):
+        if not isinstance(filename,str): return default
+        filename=os.path.basename(filename)
+        if os.path.isdir(self.root_path):
+            rt = []
+            for base, dirs, files in os.walk(self.root_path):
+                found = fnmatch.filter(files, filename)
+                rt.extend(os.path.join(base, f) for f in found)
+            return rt
+        return default
+
+    def Rw(self,name,data=None,out='byte',append=False,read=None,overwrite=True,finfo={},file_only=True,default=False):
+        if isinstance(name,str):
+            #if data is None: # Read from file
+            if IsNone(data): # Read from file
+                return cat(name,file_only=file_only,byte=out,head=read,default=default)
+            else: # Write to file
+                file_path=os.path.dirname(name)
+                if not file_path or os.path.isdir(file_path): # current dir or correct directory
+                    if append:
+                        with open(name,'ab') as f:
+                            f.write(Bytes(data))
+                    elif not file_only:
+                        try:
+                            f=os.open(name,os.O_RDWR)
+                            os.write(f,data)
+                            os.close(f)
+                        except:
+                            return False,None
+                    else:
+                        with open(name,'wb') as f:
+                            f.write(Bytes(data))
+                        if isinstance(finfo,dict) and finfo: self.SetIdentity(name,**finfo)
+                        #mode=self.Mode(mode)
+                        #if mode: os.chmod(name,int(mode,base=8))
+                        #if uid and gid: os.chown(name,uid,gid)
+                        #if mtime and atime: os.utime(name,(atime,mtime))# Time update must be at last order
+                    return True,None
+                if default == {'err'}:
+                    return False,'Directory({}) not found'.format(file_path)
+                return False,default
+        if default == {'err'}:
+            return False,'Unknown type({}) filename'.format(name)
+        return False,default
+
+    def Mode(self,val,mode='chmod',default=False):
+        '''
+        convert File Mode to mask
+        mode 
+           'chmod' : default, convert to mask (os.chmod(<file>,<mask>))
+           'int'   : return to int number of oct( ex: 755 )
+           'oct'   : return oct number (string)
+           'str'   : return string (-rwxr--r--)
+        default: False
+        '''
+        def _mode_(oct_data,mode='chmod'):
+            #convert to octal to 8bit mask, int, string
+            if mode == 'chmod':
+                return int(oct_data,base=8)
+            elif mode in ['int',int]:
+                return int(oct_data.replace('o',''),base=10)
+            elif mode in ['str',str]:
+                m=[]
+                #for i in list(str(int(oct_data,base=10))):
+                t=False
+                for n,i in enumerate(str(int(oct_data.replace('o',''),base=10))):
+                    if n == 0:
+                        if i == '1': t=True
+                    if n > 0:
+                        if i == '7':
+                            m.append('rwx')
+                        elif i == '6':
+                            m.append('rw-')
+                        elif i == '5':
+                            m.append('r-x')
+                        elif i == '4':
+                            m.append('r--')
+                        elif i == '3':
+                            m.append('-wx')
+                        elif i == '2':
+                            m.append('-w-')
+                        elif i == '1':
+                            m.append('--x')
+                str_mod=Join(m,'')
+                if t: return str_mod[:-1]+'t'
+                return str_mod
+            return oct_data
+        if isinstance(val,int):
+            #if val > 511:       #stat.st_mode (32768 ~ 33279)
+            #stat.st_mode (file: 32768~36863, directory: 16384 ~ 20479)
+            if 32768 <= val <= 36863 or 16384 <= val <= 20479:   #stat.st_mode
+                #return _mode_(oct(val)[-4:],mode) # to octal number (oct(val)[-4:])
+                return _mode_(oct(val & 0o777),mode) # to octal number (oct(val)[-4:])
+            elif 511 >= val > 63:      #mask
+                return _mode_(oct(val),mode)      # to ocal number(oct(val))
+            else:
+                return _mode_('%04d'%(val),mode)      # to ocal number(oct(val))
+        else:
+            val=Str(val,default=None)
+            if isinstance(val,str):
+                val_len=len(val)
+                num=Int(val,default=None)
+                if isinstance(num,int):
+                    if 3 <= len(val) <=4 and 100 <= num <= 777: #string type of permission number(octal number)
+                        return _mode_('%04d'%(num),mode)
+                else:
+                    val_len=len(val)
+                    if 9<= val_len <=10:
+                        if val_len == 10 and val[0] in ['-','d','s']:
+                            val=val[1:]
+                    else:
+                        StdErr('Bad permission length')
+                        return default
+                    if not all(val[k] in 'rw-' for k in [0,1,3,4,6,7]):
+                        StdErr('Bad permission format (read-write)')
+                        return default
+                    if not all(val[k] in 'xs-' for k in [2,5]):
+                        StdErr('Bad permission format (execute)')
+                        return default
+                    if val[8] not in 'xt-':
+                        StdErr( 'Bad permission format (execute other)')
+                        return default
+                    m = 0
+                    if val[0] == 'r': m |= stat.S_IRUSR
+                    if val[1] == 'w': m |= stat.S_IWUSR
+                    if val[2] == 'x': m |= stat.S_IXUSR
+                    if val[2] == 's': m |= stat.S_IXUSR | stat.S_ISUID
+
+                    if val[3] == 'r': m |= stat.S_IRGRP
+                    if val[4] == 'w': m |= stat.S_IWGRP
+        if isinstance(val,int):
+            #if val > 511:       #stat.st_mode (32768 ~ 33279)
+            #stat.st_mode (file: 32768~36863, directory: 16384 ~ 20479)
+            if 32768 <= val <= 36863 or 16384 <= val <= 20479:   #stat.st_mode
+                #return _mode_(oct(val)[-4:],mode) # to octal number (oct(val)[-4:])
+                return _mode_(oct(val & 0o777),mode) # to octal number (oct(val)[-4:])
+            elif 511 >= val > 63:      #mask
+                return _mode_(oct(val),mode)      # to ocal number(oct(val))
+            else:
+                return _mode_('%04d'%(val),mode)      # to ocal number(oct(val))
+        else:
+            val=Str(val,default=None)
+            if isinstance(val,str):
+                val_len=len(val)
+                num=Int(val,default=None)
+                if isinstance(num,int):
+                    if 3 <= len(val) <=4 and 100 <= num <= 777: #string type of permission number(octal number)
+                        return _mode_('%04d'%(num),mode)
+                else:
+                    val_len=len(val)
+                    if 9<= val_len <=10:
+                        if val_len == 10 and val[0] in ['-','d','s']:
+                            val=val[1:]
+                    else:
+                        StdErr('Bad permission length')
+                        return default
+                    if not all(val[k] in 'rw-' for k in [0,1,3,4,6,7]):
+                        StdErr('Bad permission format (read-write)')
+                        return default
+                    if not all(val[k] in 'xs-' for k in [2,5]):
+                        StdErr('Bad permission format (execute)')
+                        return default
+                    if val[8] not in 'xt-':
+                        StdErr( 'Bad permission format (execute other)')
+                        return default
+                    m = 0
+                    if val[0] == 'r': m |= stat.S_IRUSR
+                    if val[1] == 'w': m |= stat.S_IWUSR
+                    if val[2] == 'x': m |= stat.S_IXUSR
+                    if val[2] == 's': m |= stat.S_IXUSR | stat.S_ISUID
+
+                    if val[3] == 'r': m |= stat.S_IRGRP
+                    if val[4] == 'w': m |= stat.S_IWGRP
+        if isinstance(val,int):
+            #if val > 511:       #stat.st_mode (32768 ~ 33279)
+            #stat.st_mode (file: 32768~36863, directory: 16384 ~ 20479)
+            if 32768 <= val <= 36863 or 16384 <= val <= 20479:   #stat.st_mode
+                #return _mode_(oct(val)[-4:],mode) # to octal number (oct(val)[-4:])
+                return _mode_(oct(val & 0o777),mode) # to octal number (oct(val)[-4:])
+            elif 511 >= val > 63:      #mask
+                return _mode_(oct(val),mode)      # to ocal number(oct(val))
+            else:
+                return _mode_('%04d'%(val),mode)      # to ocal number(oct(val))
+        else:
+            val=Str(val,default=None)
+            if isinstance(val,str):
+                val_len=len(val)
+                num=Int(val,default=None)
+                if isinstance(num,int):
+                    if 3 <= len(val) <=4 and 100 <= num <= 777: #string type of permission number(octal number)
+                        return _mode_('%04d'%(num),mode)
+                else:
+                    val_len=len(val)
+                    if 9<= val_len <=10:
+                        if val_len == 10 and val[0] in ['-','d','s']:
+                            val=val[1:]
+                    else:
+                        StdErr('Bad permission length')
+                        return default
+                    if not all(val[k] in 'rw-' for k in [0,1,3,4,6,7]):
+                        StdErr('Bad permission format (read-write)')
+                        return default
+                    if not all(val[k] in 'xs-' for k in [2,5]):
+                        StdErr('Bad permission format (execute)')
+                        return default
+                    if val[8] not in 'xt-':
+                        StdErr( 'Bad permission format (execute other)')
+                        return default
+                    m = 0
+                    if val[0] == 'r': m |= stat.S_IRUSR
+                    if val[1] == 'w': m |= stat.S_IWUSR
+                    if val[2] == 'x': m |= stat.S_IXUSR
+                    if val[2] == 's': m |= stat.S_IXUSR | stat.S_ISUID
+
+                    if val[3] == 'r': m |= stat.S_IRGRP
+                    if val[4] == 'w': m |= stat.S_IWGRP
+                    if val[5] == 'x': m |= stat.S_IXGRP
+                    if val[5] == 's': m |= stat.S_IXGRP | stat.S_ISGID
+
+                    if val[6] == 'r': m |= stat.S_IROTH
+                    if val[7] == 'w': m |= stat.S_IWOTH
+                    if val[8] == 'x': m |= stat.S_IXOTH
+                    if val[8] == 't': m |= stat.S_IXOTH | stat.S_ISVTX
+                    return _mode_(oct(m),mode)
+        return default
+
+    # Find filename's root path and filename according to the db
+    def FindRP(self,filename=None,default=None):
+        if isinstance(filename,str) and self.info:
+            info_keys=list(self.info.keys())
+            info_num=len(info_keys)
+            if filename[0] != '/':
+                if info_num == 1: return info_keys[0]
+                return self.root_path
+            aa='/'
+            filename_a=filename.split('/')
+            for ii in range(1,len(filename_a)):
+                aa=Path(aa,filename_a[ii])
+                if aa in info_keys:
+                    #remain_path='/'.join(filename_a[ii+1:])
+                    remain_path=Join(filename_a[ii+1:],symbol='/')
+                    if info_num == 1: return aa,remain_path
+                    # if info has multi root path then check filename in the db of each root_path
+                    if self.FileInfo(remain_path,aa): return aa,remain_path
+        elif self.info:
+            return list(self.info.keys())
+        return default
+
+    def ExtractRoot(self,**opts):
+        root_path=opts.get('root_path',[])
+        dirpath=opts.get('dirpath')
+        sub_dir=opts.get('sub_dir',False)
+        if isinstance(root_path,str):
+            root_path=[root_path]
+        #if not os.path.isdir(opts.get('dest')): os.makedirs(opts.get('dest'))
+        if self.Mkdir(opts.get('dest'),force=True) is False: return False
+        for rp in root_path:
+            new_dest=opts.get('dest')
+            if dirpath:
+                rt=self.CdPath(self.info[rp],dirpath)
+                if rt is False:
+                    print('{} not found'.format(dirpath))
+                    return
+            else:
+                dirpath=''
+                rt=self.info[rp]
+
+            rinfo=rt.get(' i ',{})
+            rtype=rinfo.get('type')
+            #dir:directory,None:root directory
+            if not IsNone(rtype,chk_val=['dir',None,'']): # File / Link
+                mydest=os.path.dirname(dirpath)
+                myname=os.path.basename(dirpath)
+                if mydest:
+                    mydest=os.path.join(new_dest,mydest)
+                else:
+                    mydest=new_dest
+                #if not os.path.isdir(mydest): os.makedirs(mydest)
+                if self.Mkdir(mydest,force=True,info=rinfo) is False: return False
+                if rtype == 'link':
+                    os.symlink(rinfo['dest'],os.path.join(mydest,myname))
+                    self.SetIdentity(os.path.join(mydest,myname),**rinfo)
+                else: # File
+                    if 'data' in rt: self.Rw(Path(mydest,myname),data=rt['data'],finfo=rinfo)
+                    else: print('{} file have no data'.format(dirpath))
+#                self.SetIdentity(os.path.join(mydest,myname),**rinfo)
+            else: # directory or root DB
+                for ii in rt:
+                    if ii == ' i ': continue
+                    finfo=rt[ii].get(' i ',{})
+                    ftype=finfo.get('type')
+                    if ftype == 'dir':
+                        mydir=os.path.join(new_dest,ii)
+                        self.Mkdir(mydir,force=True,info=finfo)
+                        #self.SetIdentity(mydir,**finfo)
+                        # Sub directory
+                        if sub_dir: self.ExtractRoot(dirpath=os.path.join(dirpath,ii),root_path=rp,dest=os.path.join(new_dest,ii),sub_dir=sub_dir)
+                        #if dmtime and datime: os.utime(mydir,(datime,dmtime)) # Time update must be at last order
+                    elif ftype == 'link':
+                        iimm=os.path.join(new_dest,ii)
+                        if not os.path.exists(iimm):
+                            os.symlink(finfo['dest'],iimm)
+                            self.SetIdentity(iimm,**finfo)
+                    else: # File
+                        if 'data' in rt[ii]: self.Rw(os.path.join(new_dest,ii),data=rt[ii]['data'],finfo=finfo)
+                        else: print('{} file have no data'.format(ii))
+
+    def Mkdir(self,path,force=False,info={}):
+        if not isinstance(path,str): return None
+        if os.path.exists(path): return None
+        if force:
+            try:
+                os.makedirs(path)
+                if isinstance(info,dict) and info: self.SetIdentity(path,**info)
+            except:
+                return False
+        else:
+            try:
+                os.mkdir(path)
+                if isinstance(info,dict) and info: self.SetIdentity(path,**info)
+            except:
+                return False
+        return True
+
+    def SetIdentity(self,path,**opts):
+        if os.path.exists(path):
+            chmod=self.Mode(opts.get('mode',None))
+            uid=opts.get('uid',None)
+            gid=opts.get('gid',None)
+            atime=opts.get('atime',None)
+            mtime=opts.get('mtime',None)
+            try:
+                if chmod: os.chmod(path,int(chmod,base=8))
+                if uid and gid: os.chown(path,uid,gid)
+                if mtime and atime: os.utime(path,(atime,mtime)) # Time update must be at last order
+            except:
+                pass
+
+    def Extract(self,*path,**opts):
+        dest=opts.get('dest',None)
+        root_path=opts.get('root_path',None)
+        sub_dir=opts.get('sub_dir',False)
+        if IsNone(dest): return False
+        if not path:
+            self.ExtractRoot(root_path=self.FindRP(),dest=dest,sub_dir=sub_dir)
+        else:
+            for filepath in path:
+                fileRF=self.FindRP(filepath)
+                if isinstance(fileRF,tuple):
+                    root_path=[fileRF[0]]
+                    filename=fileRF[1]
+                    self.ExtractRoot(root_path=root_path,dirpath=filename,dest=dest,sub_dir=sub_dir)
+                elif isinstance(fileRF,list):
+                    self.ExtractRoot(root_path=fileRF,dest=dest,sub_dir=sub_dir)
+
+    def Save(self,filename):
+        pv=b'3'
+        if PyVer(2): pv=b'2'
+        self.Rw(filename,data=pv+Compress(pickle.dumps(self.info,protocol=2),mode='bz2'))
+
+    def Open(self,filename):
+        if not os.path.isfile(filename):
+            print('{} not found'.format(filename))
+            return False
+        data=self.Rw(filename)
+        if data[0]:
+            pv=data[1][0]
+            if pv == '3' and PyVer(2):
+                print('The data version is not matched. Please use Python3')
+                return False
+            # decompress data
+            try:
+                dcdata=Decompress(data[1][1:],mode='bz2')
+            except:
+                print('This is not KFILE format')
+                return False
+            try:
+                self.info=pickle.loads(dcdata) # Load data
+            except:
+                try:
+                    self.info=pickle.loads(dcdata,encoding='latin1') # Convert 2 to 3 format
+                except:
+                    print('This is not KFILE format')
+                    return False
+        else:
+            print('Can not read {}'.format(filename))
+            return False
 
 
 #if __name__ == "__main__":
