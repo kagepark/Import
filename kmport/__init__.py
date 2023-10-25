@@ -816,8 +816,10 @@ def TypeName(obj):
     obj_dir=dir(obj)
     obj_name=type(obj).__name__
     if obj_name in ['function']: return obj_name
-    elif obj_name in ['kDict','kList','DICT']+[name for name, obj in inspect.getmembers(sys.modules[__name__]) if inspect.isclass(obj)]: # Special case name
-        return obj_name
+    # Special Type of Class : Remove according to below code
+    #elif obj_name in ['kDict','kList']+[name for name, obj in inspect.getmembers(sys.modules[__name__]) if inspect.isclass(obj)]: # Special case name
+    #    print('>>> TypeName2:',obj_name, '<=', obj)
+    #    return obj_name
     elif obj_name in ['str']:
         #try:
         #    obj_tmp=eval(obj)
@@ -830,7 +832,18 @@ def TypeName(obj):
         #    elif obj in ['kDict','kList','DICT']: # Special case name
         #        return obj
         return 'str'
-    if '__dict__' in obj_dir:
+    if '__dict__' in obj_dir: # Class Object
+        # Special case Class: sub class from parent class then return parent class type
+        try:
+            # CN case
+            parent_name=inspect.getmro(obj)[1].__name__
+            if parent_name != 'object':
+                return parent_name
+        except:
+            # CN() case
+            parent_name=inspect.getmro(obj.__class__)[1].__name__
+            if parent_name != 'object':
+                return parent_name
         if obj_name == 'type': return 'classobj'
         if obj_name == 'Response': return 'response'
         if obj_name == 'Request': return 'request'
@@ -1439,21 +1452,41 @@ def IsInt(src,mode='all'):
             return _int_(src)
     return False
 
+def _max_(obj,idx,err=True):
+    #Get Object's max length
+    obj_len=len(obj)
+    if obj_len == 0: return None
+    if not isinstance(idx,int):
+        if err is True: return False
+        return obj_len-1
+    if idx >= 0:
+        if obj_len <= idx:
+            if err is True: return False
+            return obj_len-1
+        else:
+            return idx
+    else:
+        if obj_len < abs(idx):
+            if err is True: return False
+            return 0
+        return obj_len+idx
+
 class DICT(dict):
-    dot=True
     def __init__(self, *inps,**opts):
         for i in inps:
-            if Type(i,('dict','DICT')):
+            if isinstance(i,(dict,DICT)):
                 for k in i:
                     self.__setitem__(k,i[k])
+            elif isinstance(i,tuple):
+                self.TupleDict(i)
+            elif Type(i,'dict_items'):
+                self.TupleDict(*tuple(i))
             else:
                 continue
         if opts:
             for i in opts:
                 self.__setitem__(i,opts[i])
     def __getitem__(self, key):
-#        found=self.get(key)
-#        print('found ({})'.format(key),found)
         return dict.__getitem__(self,key)
 
     def __setitem__(self, key, value):
@@ -1467,9 +1500,95 @@ class DICT(dict):
                 value=DICT(value)
             # set dot type dict to sub dict
             super(DICT, self).__setitem__(key, value)
+    def Cd(self, key,symbol='/',default=False):
+        if isinstance(key,str):
+            key=key.split('/')
+            if key[0] == '': del key[0]
+        if isinstance(key,(list,tuple)):
+            for i in key:
+                if i in self:
+                    self=self[i]
+                else:
+                    return  default
+            return self
+        return default
+    def TupleDict(self,*inps,**opts):
+        #Merge *inps to DICT() data
+        err=opts.get('err',False)
+        default=opts.get('default',False)
+        out={}
+        for i in inps:
+            if isinstance(i,tuple) and len(i) == 2:
+                k,v=i
+                if isinstance(v,(dict,DICT)):
+                    v=dict(v)
+                elif isinstance(v,tuple):
+                    v=self.TupleDict(v,**opts)
+                    if not isinstance(v,(dict,DICT)):
+                        if err:
+                            return Default(inps,default)
+                        continue
+                out[k]=v
+            else:
+                if err:
+                    return Default(inps,default)
+        for k in out:
+            self.__setitem__(k,out[k])
+        return self
+    def Tuple(self):
+        return tuple(self.items())
+    def Get(self,*inps,**opts):
+        if len(inps) == 1:
+            idx=inps[0]
+        elif len(inps) > 1:
+            idx=inps[:]
+        else:
+            idx=None
+        default=opts.get('default')
+        err=opts.get('err',opts.get('error',False))
+        fill_up=opts.get('fill_up','_fAlsE_')
+        idx_only=opts.get('idx_only',opts.get('index_only',opts.get('order',False)))
+        _type=opts.get('_type_',opts.get('type'))
+        out=opts.get('out',opts.get('out_form','raw'))
+        peel=opts.get('peel')
+        strip=opts.get('strip',False)
+        ok,nidx=IndexForm(idx,idx_only=False)
+        idx_type=type(nidx).__name__
+        if ok is True:
+            obj_items=list(self.items())
+            if idx_type == 'tuple': #Range Index
+                ss=_max_(obj_items,Int(nidx[0]),err)
+                ee=_max_(obj_items,Int(nidx[1]),err)
+                if Type(ss,int) and Type(ee,int):
+                    return DICT(dict(obj_items[ss:ee+1]))
+            elif idx_type == 'list': #OR Index
+                rt=[]
+                for i in nidx:
+                    if idx_only:
+                        ix=_max_(obj_items,Int(i,default=False,err=True),err)
+                        if Type(ix,int):
+                            rt.append(obj_items[ix])
+                        elif fill_up != '_fAlsE_':
+                            rt.append(fill_up)
+                    else:
+                        t=self.get(i)
+                        if t is not None: rt.append(t)
+                return OutFormat(rt,out=out,default=default,org=self,peel=peel,strip=strip)
+            else:
+                if idx_only:
+                    ix=_max_(obj_items,Int(idx),err)
+                    if Type(ix,int):
+                        return DICT(dict((obj_items[ix],)))
+                return self.get(idx,Default(self,default))
+        elif ok is None: #Path Index
+            for i in nidx:
+                if i not in self: return Default(self,default)
+                self=self[i]
+            return self
+        return Default(self,default)
+
     # make dot dict
-    if dot:
-        __setattr__, __getattr__ = __setitem__, __getitem__
+    __setattr__, __getattr__ = __setitem__, __getitem__
 
 def Dict(*inp,deepcopy=False,copy=False,**opt):
     '''
@@ -2659,8 +2778,9 @@ def IndexForm(idx,idx_only=False,symbol=None):
             if s in idx:
                 idx_a=idx.split(s)
                 if len(idx_a) == 2:
-                    if IsInt(idx_a[0]) and IsInt(idx_a[1]):
-                        return True,(Int(idx_a[0]),Int(idx_a[1]))
+                    ss=Int(idx_a[0]) if IsInt(idx_a[0]) else 0
+                    ee=Int(idx_a[1]) if IsInt(idx_a[1]) else -1
+                    return True,(ss,ee)
                 return False,None
         if '|' in idx: # OR Index
             idx_a=idx.split('|')
@@ -2764,23 +2884,6 @@ def Get(*inps,**opts):
         obj_type='function'
     else:
         obj_type=TypeName(obj)
-    def _max_(obj,idx,err=True):
-        obj_len=len(obj)
-        if obj_len == 0: return None
-        if type(idx).__name__ != 'int':
-            if err is True: return False
-            return obj_len-1
-        if idx >= 0:
-            if obj_len <= idx:
-                if err is True: return False
-                return obj_len-1
-            else:
-                return idx
-        else:
-            if obj_len < abs(idx):
-                if err is True: return False
-                return 0
-            return idx
         
     if ok and obj_type in ('list','tuple','str','bytes'):
         if idx_type == 'tuple':
@@ -2791,11 +2894,6 @@ def Get(*inps,**opts):
         elif idx_type == 'list':
             rt=[]
             for i in nidx:
-                #if not IsInt(i):
-                #    if fill_up == '_fAlsE_':
-                #        continue
-                #    else:
-                #        rt.append(fill_up)
                 ix=_max_(obj,Int(i,default=False,err=True),err)
                 if Type(ix,int):
                     rt.append(obj[ix])
@@ -2805,39 +2903,11 @@ def Get(*inps,**opts):
         elif idx_type == 'int':
             ix=_max_(obj,nidx,err)
             if Type(ix,int): return obj[ix]
+        if idx in dir(obj):
+            return obj.__dict__.get(idx)
         return Default(obj,default)
     elif obj_type in ('dict'):
-        if ok is True:
-            obj_items=list(obj.items())
-            if idx_type == 'tuple': #Range Index
-                ss=_max_(obj_items,Int(nidx[0]),err)
-                ee=_max_(obj_items,Int(nidx[1]),err)
-                if Type(ss,int) and Type(ee,int):
-                    return dict(obj_items[ss:ee+1])
-            elif idx_type == 'list': #OR Index
-                rt=[]
-                for i in nidx:
-                    if idx_only:
-                        ix=_max_(obj_items,Int(i,default=False,err=True),err)
-                        if Type(ix,int):
-                            rt.append(obj_items[ix])
-                        elif fill_up != '_fAlsE_':
-                            rt.append(fill_up)
-                    else:
-                        t=obj.get(i)
-                        if t is not None: rt.append(t)
-                return OutFormat(rt,out=out,default=default,org=obj,peel=peel,strip=strip)
-            else:
-                if idx_only:
-                    ix=_max_(obj_items,Int(idx),err)
-                    if Type(ix,int): return obj_items[ix]
-                return obj.get(idx,Default(obj,default))
-        elif ok is None: #Path Index
-            for i in nidx:
-                if i not in obj: return Default(obj,default)
-                obj=obj[i]
-            return obj
-        return Default(obj,default)
+        return DICT(obj).Get(idx,**opts)
     elif obj_type in ('function'): #???
         if ok:
             if idx_type == 'str':
@@ -3198,6 +3268,7 @@ def ping(host,**opts):
     log=opts.get('log',None)
     log_format=opts.get('log_format','.')
     alive_port=opts.get('alive_port')
+    end_newline=opts.get('end_newline','\n')
     cancel_func=opts.get('cancel_func',opts.get('stop_func',None))
     ICMP_ECHO_REQUEST = 8 # Seems to be the same on Solaris. From /usr/include/linux/icmp.h;
     ICMP_CODE = socket.getprotobyname('icmp')
@@ -3359,8 +3430,9 @@ def ping(host,**opts):
                if count < 1: break
            if Time.Out(timeout): break
            TIME().Sleep(interval)
-        if printed: 
-           printf('\n',direct=True,log_level=1,log=log, dsp='d' if log_format =='d' else 's')
+        if end_newline and printed: 
+           if end_newline is True: end_newline='\n'
+           printf(end_newline,direct=True,log_level=1,log=log, dsp='d' if log_format =='d' else 's')
         return good
 
 class WEB:
@@ -5697,7 +5769,7 @@ def Append(*a,symbol='',at=-1,want=None): # Append data according to source type
         return s
     return False
 
-def packet_receive_all(sock,count,progress=False,progress_msg=None,log=None,retry=0,err_scr=True): # Packet
+def packet_receive_all(sock,count,progress=False,progress_msg=None,log=None,retry=0,retry_timeout=30,err_scr=True): # Packet
     if type(sock).__name__ not in ['socket','_socketobject','SSLSocket']:
         return False,'Is not network socket'
     buf = b''
@@ -5744,16 +5816,22 @@ def packet_enc(data,key='kg',enc=False):
     ndata=struct.pack('>IssI',len(pdata),data_type,enc_tf,nkey)+pdata
     return ndata
         
-def packet_head(sock,key='kg'):
+def packet_head(sock,key='kg',retry=0,retry_timeout=30,timeout=1):
     #Get Header
-    ok,head=packet_receive_all(sock,10)
-    if krc(ok,chk=True):
-        try:
-            st_head=struct.unpack('>IssI',Bytes(head))
-            if st_head[3] == Bytes2Int(key,encode='utf-8',default='org'):
-                return True,st_head[0],st_head[1],st_head[2]
-        except:
-            pass
+    ph=TIME()
+    if (retry * retry_timeout) > timeout:
+        timeout=retry * retry_timeout
+    while True:
+        ok,head=packet_receive_all(sock,10,retry=retry,retry_timeout=retry_timeout)
+        if krc(ok,chk=True):
+            try:
+                st_head=struct.unpack('>IssI',Bytes(head))
+                if st_head[3] == Bytes2Int(key,encode='utf-8',default='org'):
+                    return True,st_head[0],st_head[1],st_head[2]
+            except:
+                pass
+        if ph.Out(timeout): break
+        time.sleep(1)
     return False,'Fail for read header({})'.format(head),None,None
 
 def packet_dec(data,enc,key='kg'):
@@ -5802,10 +5880,17 @@ def cat(filename,**opts):
     file_only=opts.get('file_only',opts.get('fileonly',True))
     no_all_newline=opts.get('no_all_newline',False)
     no_first_newline=opts.get('no_first_newline',False)
+    log=opts.get('log')
 
-    if IsNone(filename): return False,'Filename is None'
-    if os.path.isdir(filename): return False,'{} is a directory'.format(filename)
-    if not os.path.exists(filename): return False,'{} not found'.format(filename)
+    if IsNone(filename):
+        printf('Filename is None',log=log,mode='d')
+        return default
+    if os.path.isdir(filename):
+        printf('{} is a directory'.format(filename),log=log,mode='d')
+        return default
+    if not os.path.exists(filename):
+        printf('{} not found'.format(filename),log=log,mode='d')
+        return default
     try:
         if read_firstline:  # Readline
             with open(filename,'rb') as f:
@@ -5819,8 +5904,9 @@ def cat(filename,**opts):
         if not byte:
            data=Str(data)
     except:
-        return False,sys.exc_info()[0]
-    return True,RemoveNewline(data,mode='edge' if no_edge else 'end' if no_end_newline else 'first' if no_first_newline else 'all' if no_all_newline else None,newline=newline,byte=byte)
+        printf(sys.exc_info()[0],log=log,mode='d')
+        return default
+    return RemoveNewline(data,mode='edge' if no_edge else 'end' if no_end_newline else 'first' if no_first_newline else 'all' if no_all_newline else None,newline=newline,byte=byte)
 
 def Compress(data,mode='gzip'):
     try:
@@ -6167,7 +6253,10 @@ class FILE_W:
         if isinstance(name,str):
             #if data is None: # Read from file
             if IsNone(data): # Read from file
-                return cat(name,file_only=file_only,byte=out,head=read,default=default)
+                data=cat(name,file_only=file_only,byte=out,head=read,default=default)
+                if data is False:
+                    return False,default
+                return True,data
             else: # Write to file
                 file_path=os.path.dirname(name)
                 if not file_path or os.path.isdir(file_path): # current dir or correct directory
