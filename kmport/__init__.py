@@ -5802,9 +5802,29 @@ def packet_receive_all(sock,count,progress=False,progress_msg=None,log=None,retr
             printf('\rDownloading... [ 100 % ]\n',log=log,direct=True)
     return True,buf
 
+def Data2ByteString(data,protocol=2):
+    try:
+        return True,pickle.dumps(data,protocol=protocol) # common 2.x & 3.x version : protocol=2
+    except:
+        try:
+            # <class 'KeyError'> then try again after filter out python default engine
+            # maybe unknown character in the data
+            return True,pickle.dumps(eval(str(data)),protocol=protocol) # common 2.x & 3.x version : protocol=2
+        except:
+            return False,sys.exc_info()[0]
+
+def ByteString2Data(data):
+    # If not pickle data then return original data, that is real data
+    # if pickle data then convert to data
+    try:
+        return pickle.loads(data)
+    except:
+        return data
+
 def packet_enc(data,key='kg',enc=False):
     nkey=Bytes2Int(key,encode='utf-8',default='org')
-    pdata=pickle.dumps(data,protocol=2) # common 2.x & 3.x version : protocol=2
+    ok,pdata=Data2ByteString(data)
+    if not ok: return False,pdata
     data_type=Bytes(type(data).__name__[0])
     if enc and key:
         # encode code here
@@ -5814,7 +5834,7 @@ def packet_enc(data,key='kg',enc=False):
     else:
         enc_tf=Bytes('f')
     ndata=struct.pack('>IssI',len(pdata),data_type,enc_tf,nkey)+pdata
-    return ndata
+    return True,ndata
         
 def packet_head(sock,key='kg',retry=0,retry_timeout=30,timeout=1):
     #Get Header
@@ -5842,7 +5862,7 @@ def packet_dec(data,enc,key='kg'):
         # decode code here
         # data=decode(data)
         pass
-    return pickle.loads(data)
+    return ByteString2Data(data)
 
 def RemoveNewline(src,mode='edge',newline='\n',byte=None):
     if isinstance(byte,bool):
