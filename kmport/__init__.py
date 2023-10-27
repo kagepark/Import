@@ -3676,7 +3676,7 @@ class TIME:
     def Datetime(self):
         return datetime()
 
-def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin/bash',path=None,progress=False,progress_pre_new_line=False,progress_post_new_line=True,log=None,env={},full_path=None,remove_path=None,remove_all_path=None,default_timeout=3600,env_out=False,cd=False,decode=None):
+def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin/bash',path=None,progress=False,progress_pre_new_line=False,progress_post_new_line=True,log=None,env={},full_path=None,remove_path=None,remove_all_path=None,default_timeout=3600,env_out=False,cd=False,keep_cwd=False,decode=None):
     '''
     Interactive shell
     path: append the path to existing system path
@@ -3691,6 +3691,13 @@ def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin
         for ii in env:
             if ii in os_env:
                 os_env[ii]=env[ii]
+
+    def cmd_form(cmd):
+        cmd_a=cmd.split()
+        cmd_file=cmd_a[0]
+        if cmd_file[0] != '/' and cmd_file == os.path.basename(cmd_file) and os.path.isfile(cmd_file):
+            return './'+cmd
+        return cmd
 
     def pprog(stop,progress_pre_new_line=False,progress_post_new_line=True,log=None,progress_interval=5):
         for i in range(0,progress_interval*10):
@@ -3738,37 +3745,39 @@ def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin
         for ii in remove_all_path.split(':'):
             full_path_a=[i for i in full_path_a if i != ii]
         full_path=':'.join(full_path_)
-    inside_cmd=None
-    if full_path:
-        if exe_name in ['csh','tcsh']:
-            inside_cmd='''setenv PATH "%s"; %s'''%(full_path,cmd)
-        else:
-            inside_cmd='''export PATH=%s; %s'''%(full_path,cmd)
-    elif isinstance(path,str) and len(path) > 0:
-        if cd:
-            cmd_a=cmd.split()
-            cmd_file=cmd_a[0]
-            if cmd_file[0] != '/' and cmd_file == os.path.basename(cmd_file) and os.path.isfile(cmd_file):
-                inside_cmd='''cd %s && ./%s'''%(path,cmd)
-            else:
-                inside_cmd='''cd %s && %s'''%(path,cmd)
-        else:
-            if exe_name in ['csh','tcsh']:
-                inside_cmd='''setenv PATH "%s:${PATH}"; %s'''%(path,cmd)
-            else:
-                inside_cmd='''export PATH=%s:${PATH}; %s'''%(path,cmd)
-    else:
-        cmd_a=cmd.split()
-        cmd_file=cmd_a[0]
-        if cmd_file[0] != '/' and cmd_file == os.path.basename(cmd_file) and os.path.isfile(cmd_file):
-            cmd='./'+cmd
     if executable:
         if not os.path.isfile(executable):
             executable=find_executable(exe_name)
-    inside_cmd=inside_cmd if inside_cmd else cmd
-    p = Popen(inside_cmd , shell=True, stdout=PIPE, stderr=STDOUT,executable=executable, env=os_env)
+    #################################
+    # Run Command
+    #################################
+    if full_path:
+        if exe_name in ['csh','tcsh']:
+            p = Popen('''setenv PATH "%s"; %s'''%(full_path,cmd) , shell=True, stdout=PIPE, stderr=STDOUT,executable=executable, env=os_env)
+        else:
+            p = Popen('''export PATH=%s; %s'''%(full_path,cmd) , shell=True, stdout=PIPE, stderr=STDOUT,executable=executable, env=os_env)
+    elif isinstance(path,str) and len(path) > 0:
+        if cd:
+            if os.path.isdir(path):
+                #p = Popen(cmd_form(cmd) , shell=True, stdout=PIPE, stderr=STDOUT,executable=executable, env=os_env, cwd=path)
+                pwd=os.getcwd()
+                os.chdir(path) # for cmd_form()
+                p = Popen(cmd_form(cmd) , shell=True, stdout=PIPE, stderr=STDOUT,executable=executable, env=os_env)
+                if keep_cwd:
+                    os.chdir(pwd)
+            else:
+                return 1, '{} not found'.format(path), '{} not found'.format(path),start_time.Init(),start_time.Now(int),cmd,path
+        else:
+            if exe_name in ['csh','tcsh']:
+                p = Popen('''setenv PATH "%s:${PATH}"; %s'''%(path,cmd) , shell=True, stdout=PIPE, stderr=STDOUT,executable=executable, env=os_env)
+            else:
+                p = Popen('''export PATH=%s:${PATH}; %s'''%(path,cmd) , shell=True, stdout=PIPE, stderr=STDOUT,executable=executable, env=os_env)
+    else:
+        p = Popen(cmd_form(cmd) , shell=True, stdout=PIPE, stderr=STDOUT,executable=executable, env=os_env)
 
+    #################################
     #Need error log out from thread to output
+    #################################
     def write_err(p):
        while True:
            ee=p.stderr.read(1)
@@ -5769,7 +5778,7 @@ def Append(*a,symbol='',at=-1,want=None): # Append data according to source type
         return s
     return False
 
-def packet_receive_all(sock,count,progress=False,progress_msg=None,log=None,retry=0,retry_timeout=30,err_scr=True): # Packet
+def packet_receive_all(sock,count,progress=False,progress_msg=None,log=None,retry=0,retry_timeout=5,err_scr=True): # Packet
     if type(sock).__name__ not in ['socket','_socketobject','SSLSocket']:
         return False,'Is not network socket'
     buf = b''
@@ -5784,6 +5793,7 @@ def packet_receive_all(sock,count,progress=False,progress_msg=None,log=None,retr
                 printf('\rDownloading... [ {} % ]'.format(int((file_size_d-count) / file_size_d * 100)),log=log,direct=True)
         try:
             newbuf = sock.recv(count)
+            tn=0 # reset try
         except socket.error as e:
             if tn < retry:
                 printf("[ERROR] timeout value:{} retry: {}/{}\n{}".format(sock.gettimeout(),tn,retry,e),log=log,dsp='e' if err_scr else 'd')
@@ -5836,12 +5846,22 @@ def packet_enc(data,key='kg',enc=False):
     ndata=struct.pack('>IssI',len(pdata),data_type,enc_tf,nkey)+pdata
     return True,ndata
         
-def packet_head(sock,key='kg',retry=0,retry_timeout=30,timeout=1):
+def packet_head(sock,key='kg',retry=0,retry_timeout=5,keep_retry=False,timeout=1):
     #Get Header
+    #keep_retry :True: if clased socket but wait
     ph=TIME()
     if (retry * retry_timeout) > timeout:
         timeout=retry * retry_timeout
+    else:
+        if retry_timeout <= 0: retry_timeout=5
+        retry=(timeout//retry_timeout)+1
     while True:
+        if ClosedSocket(sock):
+            if retry <= 0:
+                return False,'Already closed the socket'
+            retry-=1
+            time.sleep(retry_timeout)
+            continue
         ok,head=packet_receive_all(sock,10,retry=retry,retry_timeout=retry_timeout)
         if krc(ok,chk=True):
             try:
@@ -5863,6 +5883,21 @@ def packet_dec(data,enc,key='kg'):
         # data=decode(data)
         pass
     return ByteString2Data(data)
+
+def ClosedSocket(sock):
+    try:
+        # this will try to read bytes without blocking
+        # and also without removing them from buffer (peek only)
+        data = sock.recv(16, socket.MSG_DONTWAIT | socket.MSG_PEEK)
+        if len(data) == 0:
+            return True
+    except BlockingIOError:
+        return False  # socket is open and reading from it would block
+    except ConnectionResetError:
+        return True  # socket was closed for some other reason
+    except Exception as e: #unexpected exception when checking if a socket is closed
+        return False
+    return False
 
 def RemoveNewline(src,mode='edge',newline='\n',byte=None):
     if isinstance(byte,bool):
