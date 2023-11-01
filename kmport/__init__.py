@@ -1794,7 +1794,7 @@ def GlobalEnv(): # Get my parent's globals()
     '''
     return dict(inspect.getmembers(inspect.stack()[1][0]))["f_globals"]
 
-def Install(module,install_account='',mode=None,upgrade=False,version=None,force=False,pkg_map=None,err=False):
+def Install(module,install_account='',mode=None,upgrade=False,version=None,force=False,pkg_map=None,err=False,install_name=None):
     '''
     Install python module file
     module name
@@ -1838,7 +1838,7 @@ def Install(module,install_account='',mode=None,upgrade=False,version=None,force
         return False
 
     pkg_name=module.split('.')[0]
-    install_name=pkg_map.get(pkg_name,pkg_name)
+    f not install_name: install_name=pkg_map.get(pkg_name,pkg_name)
     # Check installed package
     # pip module)
     #install_cmd=['install']
@@ -2052,6 +2052,7 @@ def Import(*inps,**opts):
     requirements=opts.get('requirements')
     #install_account=opts.get('install_account','--user')
     install_account=opts.get('install_account','') # '--user','user','myaccount','account',myself then install at my local account
+    install_name=opts.get('install_name')
 
     #Append Module Path
     virtual_env=os.environ.get('VIRTUAL_ENV')
@@ -2142,9 +2143,9 @@ def Import(*inps,**opts):
                                 version=ii_l[1]
                     ii_a=ii_l[0].split(':')
                     if len(ii_a) == 2:
-                        ic=Install(ii_a[1],install_account,version=version)
+                        ic=Install(ii_a[1],install_account,version=version,install_name=install_name)
                     else:
-                        ic=Install(ii_a[0],install_account,version=version)
+                        ic=Install(ii_a[0],install_account,version=version,install_name=install_name)
                     if ic:
                         loaded,module=ModLoad(ii_a[0],force=force,globalenv=globalenv,re_load=re_load)
             continue
@@ -2155,11 +2156,11 @@ def Import(*inps,**opts):
                 #Mismatched version or not installed then install
                 if cur_version is None or (cur_version and not CompVersion(cur_version,symbol,version)):
                     if symbol in ['>','>=']:
-                        Install(module,install_account=install_account,upgrade=True)
+                        Install(module,install_account=install_account,upgrade=True,install_name=install_name)
                     elif symbol in ['==']:
-                        Install(module,install_account=install_account,upgrade=True,version='== {}'.format(version))
+                        Install(module,install_account=install_account,upgrade=True,version='== {}'.format(version),install_name=install_name)
                     elif symbol in ['<','<=']:
-                        Install(module,install_account=install_account,upgrade=True,version='{} {}'.format(symbol,version))
+                        Install(module,install_account=install_account,upgrade=True,version='{} {}'.format(symbol,version),install_name=install_name)
 
         #Load module
         loaded,module=ModLoad(inp,force=force,globalenv=globalenv,unload=unload,re_load=re_load)
@@ -2185,11 +2186,11 @@ def Import(*inps,**opts):
                                 version=ii_l[i]+' '+ii_l[2]
                         ii_a=ii_l[0].split(':')
                         if len(ii_a) == 2:
-                            ic=Install(ii_a[1],install_account,version=version,upgrade=upgrade)
+                            ic=Install(ii_a[1],install_account,version=version,upgrade=upgrade,install_name=install_name)
                         else:
-                            ic=Install(ii_a[0],install_account,version=version,upgrade=upgrade)
+                            ic=Install(ii_a[0],install_account,version=version,upgrade=upgrade,install_name=install_name)
             #Install auto_install and not installed
-            elif auto_install and Install(module,install_account):
+            elif auto_install and Install(module,install_account,install_name=install_name):
                 loaded,module=ModLoad(inp,force=force,globalenv=globalenv,re_load=re_load)
             else:
                 if dbg:
