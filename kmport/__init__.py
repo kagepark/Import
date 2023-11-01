@@ -1838,7 +1838,7 @@ def Install(module,install_account='',mode=None,upgrade=False,version=None,force
         return False
 
     pkg_name=module.split('.')[0]
-    f not install_name: install_name=pkg_map.get(pkg_name,pkg_name)
+    if not install_name: install_name=pkg_map.get(pkg_name,pkg_name)
     # Check installed package
     # pip module)
     #install_cmd=['install']
