@@ -3866,16 +3866,96 @@ def IsCancel(func,**opts):
 def IsBreak(func,**opts):
     return IsTrue(func,requirements=['cancel','canceling','REVD','stop','break'],**opts)
 
+def FixApostrophe(string):
+    if isinstance(string,str):
+        if "'" in string:
+            return '''"{}"'''.format(string)
+        return """'{}'""".format(string)
+    return string
+
 def sprintf(string,*inps,**opts):
     '''
     """ipmitool -H %(ipmi_ip)s -U %(ipmi_user)s -P '%(ipmi_pass)s' """%(**opts)
     """{app} -H {ipmi_ip} -U {ipmi_user} -P '{ipmi_pass}' """.format(**opts)
     """{} -H {} -U {} -P '{}' """.format(*inps)
     """{0} -H {1} -U {2} -P '{3}' """.format(*inps)
+    _err_ : True: missing parameter then return False, False(default): convert just possible things, others just keep return original form
+    apostrophe : True: automatically change and add when input value having apostrophe(default)
+                 None : automatically change apostrophe when input value having same apostrophe, but not automatically adding apostrophe when format string having no apostrophe
+                 False: do not change any parameter
     '''
+    def _replace_format_to_value_(i,tmp,string,val,apostrophe=True):
+        missing=[]
+        string_a=string.split()
+        oidx=0
+        tuple_val=isinstance(val,(tuple,list))
+        for ii in tmp:
+            if tuple_val: ii=int(ii)
+            idx=None
+            #input location format
+            if i < 2:
+                # list,tuple,parameter
+                #print('{}'.format(1))
+                #print('{0}'.format(1))
+                #print('{a}'.format(**{'a':1}))
+                #print('{a}'.format(a=1))
+                if '''{%s}'''%(ii) in string_a:
+                    idx=string_a.index('''{%s}'''%(ii))
+                elif """'{%s}'"""%(ii) in string_a:
+                    idx=string_a.index("""'{%s}'"""%(ii))
+                elif '''"{%s}"'''%(ii) in string_a:
+                    idx=string_a.index('''"{%s}"'''%(ii))
+            elif i == 2:
+                # dictionary input 
+                # print('%(a)s'%({'a':'a'}))
+                if '''%({})s'''.format(ii) in string_a:
+                    idx=string_a.index('''%({})s'''.format(ii))
+                elif """'%({})s'""".format(ii) in string_a:
+                    idx=string_a.index("""'%({})s'""".format(ii))
+                elif '''"%({})s"'''.format(ii) in string_a:
+                    idx=string_a.index('''"%({})s"'''.format(ii))
+            #Found format location
+            if isinstance(idx,int):
+                # if input data is string
+                if (tuple_val and len(val) > ii) or (not tuple_val and ii in val):
+                    if isinstance(val[ii],str):
+                        if (string_a[idx][0] == "'" and string_a[idx][-1] == "'") \
+                           or (string_a[idx][0] == '"' and string_a[idx][-1] == '"'):
+                            if apostrophe \
+                               and ((val[ii][0] == "'" and val[ii][-1] == "'")\
+                               or (val[ii][0] == '"' and val[ii][-1] == '"')):
+                                string_a[idx]=val[ii]
+                            elif apostrophe is not False:
+                                if string_a[idx][0] == "'" and "'" in val[ii]:
+                                    string_a[idx]='''"'''+val[ii]+'''"'''
+                                elif string_a[idx][0] == '"' and '"' in val[ii]:
+                                    string_a[idx]="""'"""+val[ii]+"""'"""
+                                else:
+                                    string_a[idx]=string_a[idx].format(**val)
+                        else:
+                            if "'" in val[ii]:
+                                if apostrophe:
+                                    string_a[idx]='''"'''+val[ii]+'''"'''
+                            elif '"' in val[ii]: 
+                                if apostrophe:
+                                    string_a[idx]="""'"""+val[ii]+"""'"""
+                            else:
+                                string_a[idx]=val[ii]
+                    else:
+                        if tuple_val:
+                            string_a[idx]=string_a[idx].format(*val)
+                        else:
+                            string_a[idx]=string_a[idx].format(**val)
+                else:
+                    missing.append(ii)
+                # if not string input data then skip here
+        return Join(string_a,symbol=' '),missing
+
     if not isinstance(string,str): return False,string
-    ffall=[re.compile('\{(\d*)\}').findall(string),re.compile('\{(\w*)\}').findall(string),re.compile('\%\((\w*)\)s').findall(string),re.compile('\{\}').findall(string)]
+    ffall=[re.compile('\{(\d*)\}').findall(string),re.compile('\{(\w*)\}').findall(string),re.compile('\%\((\w*)\)s').findall(string),re.compile('\{\}').findall(string),re.compile('\%[-0-9.]*[s|c|d|f]').findall(string)]
     i=0
+    apostrophe=opts.pop('apostrophe') if 'apostrophe' in opts else True
+    error=opts.pop('_err_') if '_err_' in opts else False
     for tmp in ffall:
         if i in [0,1]: tmp=[ j  for j in tmp if len(j) ]
         if tmp:
@@ -3883,67 +3963,62 @@ def sprintf(string,*inps,**opts):
                 mx=0
                 for z in tmp:
                     if int(z) > mx: mx=int(z)
-                if inps:
-                    if len(inps) > mx: return True,string.format(*inps)
-                elif opts:
-                    if len(opts) > mx: return True,string.format(*opts.values())
-                return False,"""Need more input (tuple/list) parameters(require {})""".format(mx)
+                if len(inps) > mx:
+                    string,m=_replace_format_to_value_(i,tmp,string,inps,apostrophe)
+                    if error and m : return False,'missing parameters {}'.format(m)
+                elif len(opts) > mx:
+                    string,m=_replace_format_to_value_(i,tmp,string,list(opts.values()),apostrophe)
+                    if error and m : return False,'missing parameters {}'.format(m)
+                else:
+                    return False,"""Need more input (tuple/list) parameters(require {})""".format(mx)
             elif 0< i < 2:
-                new_str=''
-                string_a=string.split()
-                oidx=0
-                for ii in tmp:
-                    idx=None
-                    if '''{%s}'''%(ii) in string_a:
-                        idx=string_a.index('''{%s}'''%(ii))
-                    elif """'{%s}'"""%(ii) in string_a:
-                        idx=string_a.index("""'{%s}'"""%(ii))
-                    elif '''"{%s}"'''%(ii) in string_a:
-                        idx=string_a.index('''"{%s}"'''%(ii))
-                    if isinstance(idx,int):
-                        if ii in opts:
-                            if isinstance(opts[ii],str) and "'" in opts[ii] and "'" in string_a[idx]:
-                                _t_='''"{%s}"'''%(ii)
-                                string_a[idx]=_t_.format(**opts)
-                            else:
-                                string_a[idx]=string_a[idx].format(**opts)
-                    elif ii in opts:
-                        for jj in range(0,len(string_a)):
-                           if '''{%s}'''%(ii) in string_a[jj]:
-                               string_a[jj]=string_a[jj].format(**opts)
-                return True,Join(string_a,symbol=' ')
+                string,m=_replace_format_to_value_(i,tmp,string,opts,apostrophe)
+                if error and m : return False,'missing parameters {}'.format(m)
             elif i == 2:
-                new_str=''
-                string_a=string.split()
-                oidx=0
-                for ii in tmp:
-                    idx=None
-                    if '''%({})s'''.format(ii) in string_a:
-                        idx=string_a.index('''%({})s'''.format(ii))
-                    elif """'%({})'""".format(ii) in string_a:
-                        idx=string_a.index("""'%({})s'""".format(ii))
-                    elif '''"%({})"'''.format(ii) in string_a:
-                        idx=string_a.index('''"%({})s"'''.format(ii))
-                    if isinstance(idx,int):
-                        if ii in opts:
-                            if isinstance(opts[ii],str) and "'" in opts[ii] and "'" in string_a[idx]:
-                                _t_='''"{%s}"'''%(ii)
-                                string_a[idx]=_t_%(opts)
-                            else:
-                                string_a[idx]=string_a[idx]%(opts)
-                    elif ii in opts:
-                        for jj in range(0,len(string_a)):
-                           if '''%({})s'''.format(ii) in string_a[jj]:
-                               string_a[jj]=string_a[jj]%(opts)
-                return True,Join(string_a,symbol=' ')
+                for tt in inps:
+                    if isinstance(tt,dict):
+                        opts.update(tt)
+                string,m=_replace_format_to_value_(i,tmp,string,opts,apostrophe)
+                if error and m : return False,'missing parameters {}'.format(m)
             elif i == 3:
                 if inps:
-                    if len(tmp) == len(inps): return True,string.format(*inps)
-                    return False,"""Mismatched input (tuple/list) number (require:{}, input:{})""".format(len(tmp),len(inps))
+                    if len(tmp) == len(inps):
+                        string=string.format(*inps)
+                    elif error:
+                        return False,"""Mismatched input (tuple/list) number (require:{}, input:{})""".format(len(tmp),len(inps))
                 elif opts:
-                    if len(tmp) == len(opts): return True,string.format(*opts.values())
-                    return False,"""Mismatched input (tuple/list) number (require:{}, input:{})""".format(len(tmp),len(opts))
+                    if len(tmp) == len(opts):
+                        string=string.format(*opts.values())
+                    elif error:
+                        return False,"""Mismatched input (tuple/list) number (require:{}, input:{})""".format(len(tmp),len(opts))
+            elif i >= 4:
+                if inps:
+                    if len(tmp) == len(inps):
+                        string=string%(inps)
+                    elif error:
+                        return False,"""Mismatched input (tuple/list) number (require:{}, input:{})""".format(len(tmp),len(inps))
+                elif opts:
+                    if len(tmp) == len(opts):
+                        string=string%(opts.values())
+                    elif error:
+                        return False,"""Mismatched input (tuple/list) number (require:{}, input:{})""".format(len(tmp),len(opts))
         i+=1
+    if inps:
+        try:
+            return True,string.format(*inps)
+        except:
+            try:
+                return True,string%(inps)
+            except:
+                pass
+    if opts:
+        try:
+            return True,string.format(**opts)
+        except:
+            try:
+                return True,string%(opts)
+            except:
+                pass
     return True,string
 
 def Sort(src,reverse=False,func=None,order=None,field=None,base='key',sym=None):
@@ -5172,6 +5247,7 @@ def printf(*msg,**opts):
         d  : save to debug file
         e  : log to standard error 
         c  : console
+        i  : ignore print
         r  : return
            rt=printf('xxxx',dsp='r')
            print(rt)
@@ -5182,6 +5258,7 @@ def printf(*msg,**opts):
     date_format=opts.get('date_format','%m/%d/%Y %H:%M:%S' if opts.get('date') else None)
     direct=opts.get('direct',False)
     dsp=opts.get('dsp',opts.get('mode','a'))
+    if dsp == 'i': return # ignore print
     log=opts.get('log',None)
     log_level=opts.get('log_level',None)
     #caller=opts.get('caller',opts.get('caller_detail',Variable(src='printf_caller_detail',mode='all',parent=1,default=None)))
@@ -5199,6 +5276,8 @@ def printf(*msg,**opts):
     #form=opts.get('form')
     intro=opts.get('intro',None)
     logfile=opts.get('logfile',opts.get('log_file',[]))
+    caller_ignore=opts.get('caller_ignore',opts.get('caller_upper',[]))
+    ignore_myself=opts.get('ignore_myself',True)
 
     # save msg(removed log_file information) to syslogd 
     if syslogd:
@@ -5253,7 +5332,34 @@ def printf(*msg,**opts):
         intro_msg='{0} '.format(TIME().Now().strftime(date_format))
     intro_len=len(intro_msg)
     if caller or caller_tree:
-        arg={'parent':opts.get('caller_parent',1),'args':True}
+        parent_n=opts.get('caller_parent',1)
+        if ignore_myself:
+            if caller_ignore and isinstance(caller_ignore,list):
+                caller_ignore.append('FeedFunc')
+                caller_ignore.append('printf')
+            else:
+                caller_ignore=['FeedFunc','printf']
+        if caller_ignore and isinstance(caller_ignore,list):
+            arg={'parent':parent_n,'args':False,'history':True,'tree':False}
+            call_name=FunctionName(**arg)
+            new_p=0
+            for i in range(len(call_name)-1,0,-1):
+                if call_name[i][0] in caller_ignore:
+                    new_p+=1
+                    continue
+                break
+            if isinstance(parent_n,str):
+                parent_n_a=parent_n.split('-')
+                if parent_n_a[0]:
+                    parent_n_a[0]='{}'.format(int(parent_n_a[0])+new_p)
+                else:
+                    parent_n_a[0]='{}'.format(new_p)
+                if len(parent_n_a) == 2 and parent_n_a[1]:
+                    parent_n_a[1]='{}'.format(int(parent_n_a[1])+new_p)
+                parent_n='-'.join(parent_n_a)
+            elif isinstance(parent_n,int):
+                parent_n=parent_n+new_p
+        arg={'parent':parent_n,'args':True}
         if caller: arg.update({'line_number':True,'full_filename':opts.get('caller_full_filename',False),'filename':True})
         if caller_tree: arg.update({'history':True,'tree':True})
         call_name=FunctionName(**arg)
