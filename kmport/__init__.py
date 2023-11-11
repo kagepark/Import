@@ -5228,9 +5228,19 @@ def printf(*msg,**opts):
     date_format                  : if defined date_format then print date with date_format
     direct=False/True            : (True) print without newline and any intro information
     logfile=                     : saveing log to logfile
-    caller_detail=False/True     : (True)print caller information with line number and filename
-        (caller_full_filename=False/True: print full path filename )
-    caller_history=False/True    : (True) print tree of caller history
+    caller_detail=False/True     : print caller information
+       True:
+                                 - line number, filename, args, optional caller_full_filename
+       False: (detail selection)
+          caller_args=False/True : (False) print args of function
+          caller_filename=False/True : (False) print filename
+          caller_full_filename=False/True : (False) print full path filename
+          caller_line_number=False/True : (False) print line number 
+    caller_tree=False/True       : print tree of caller history
+       True:
+          - tree and history
+       False:
+          caller_history=False/True : return history without tree
     syslogd=                     : logging to syslogd daemon
     end_newline=True/False       : mark new line at end of the line
     start_newline=True/False     : mark new line at start of the line
@@ -5255,17 +5265,25 @@ def printf(*msg,**opts):
     global printf_caller_detail
     global printf_caller_tree
     global printf_log_base
-    date_format=opts.get('date_format','%m/%d/%Y %H:%M:%S' if opts.get('date') else None)
     direct=opts.get('direct',False)
     dsp=opts.get('dsp',opts.get('mode','a'))
+    if not dsp: dsp='a'
     if dsp == 'i': return # ignore print
+    date_format=opts.get('date_format','%m/%d/%Y %H:%M:%S' if not direct and opts.get('date') else None)
     log=opts.get('log',None)
     log_level=opts.get('log_level',None)
     #caller=opts.get('caller',opts.get('caller_detail',Variable(src='printf_caller_detail',mode='all',parent=1,default=None)))
     #caller_tree=opts.get('caller_tree',opts.get('caller_history',Variable(src='printf_caller_tree',mode='all',parent=1,default=None)))
     #printf_log_base=Variable('printf_log_base',parent=1,mode='all')
-    caller=opts.get('caller',opts.get('caller_detail',printf_caller_detail))
-    caller_tree=opts.get('caller_tree',opts.get('caller_history',printf_caller_tree))
+    caller_detail=opts.get('caller',opts.get('caller_detail',printf_caller_detail))
+    caller_tree=opts.get('caller_tree',printf_caller_tree)
+    caller_history=opts.get('caller_history',False)
+    caller_ignore=opts.get('caller_ignore',opts.get('caller_upper',[]))
+    caller_full_filename=opts.get('caller_full_filename',False)
+    caller_filename=opts.get('caller_filename',False)
+    caller_line_number=opts.get('caller_line_number',False)
+    caller_args=opts.get('caller_args',False)
+    parent_n=opts.get('caller_parent',1)
     syslogd=opts.get('syslogd',None)
     new_line='' if direct else opts.get('new_line',opts.get('newline',opts.get('end',opts.get('end_newline','\n'))))
     if new_line is True: new_line='\n'
@@ -5276,7 +5294,6 @@ def printf(*msg,**opts):
     #form=opts.get('form')
     intro=opts.get('intro',None)
     logfile=opts.get('logfile',opts.get('log_file',[]))
-    caller_ignore=opts.get('caller_ignore',opts.get('caller_upper',[]))
     ignore_myself=opts.get('ignore_myself',True)
 
     # save msg(removed log_file information) to syslogd 
@@ -5331,14 +5348,14 @@ def printf(*msg,**opts):
     if date_format and not syslogd:
         intro_msg='{0} '.format(TIME().Now().strftime(date_format))
     intro_len=len(intro_msg)
-    if caller or caller_tree:
-        parent_n=opts.get('caller_parent',1)
-        if ignore_myself:
-            if caller_ignore and isinstance(caller_ignore,list):
-                caller_ignore.append('FeedFunc')
-                caller_ignore.append('printf')
-            else:
-                caller_ignore=['FeedFunc','printf']
+    if not direct:
+        if caller_detail or caller_tree or caller_history or caller_ignore:
+            if ignore_myself:
+                if caller_ignore and isinstance(caller_ignore,list):
+                    caller_ignore.append('FeedFunc')
+                    caller_ignore.append('printf')
+                else:
+                    caller_ignore=['FeedFunc','printf']
         if caller_ignore and isinstance(caller_ignore,list):
             arg={'parent':parent_n,'args':False,'history':True,'tree':False}
             call_name=FunctionName(**arg)
@@ -5359,21 +5376,29 @@ def printf(*msg,**opts):
                 parent_n='-'.join(parent_n_a)
             elif isinstance(parent_n,int):
                 parent_n=parent_n+new_p
-        arg={'parent':parent_n,'args':True}
-        if caller: arg.update({'line_number':True,'full_filename':opts.get('caller_full_filename',False),'filename':True})
-        if caller_tree: arg.update({'history':True,'tree':True})
+        arg={'parent':parent_n}
+        if caller_detail:
+            arg.update({'line_number':True,'full_filename':caller_full_filename,'filename':True,'args':True})
+        else:
+            arg['line_number']=caller_line_number
+            arg['full_filename']=caller_full_filename
+            arg['args']=caller_args
+            arg['filename']=caller_filename
+        if caller_tree:
+            arg.update({'history':True,'tree':True})
+        else:
+            arg['history']=caller_history
         call_name=FunctionName(**arg)
         if call_name:
             # if line_number and filename then print logging at next line
             # if date_format then logging's intro length will be date format
             # if not date_format then loggin's intro length will be stepping length
-            if caller: call_name=call_name+[''] if date_format else call_name+[' ']
+            if caller_tree or caller_history: call_name=call_name+[''] if date_format else call_name+[' ']
             intro_msg=intro_msg+WrapString(Join(call_name,'\n'),fspace=0, nspace=len(intro_msg),mode='space') + ': '
             intro_len=intro_len+len(call_name[-1])+2
-    if Type(intro,'str') and intro:
-        intro_msg=intro_msg+intro+': '
-        intro_len=intro_len+len(intro)+2
-
+        if Type(intro,'str') and intro:
+            intro_msg=intro_msg+intro+': '
+            intro_len=intro_len+len(intro)+2
     # Make a msg
     msg_str=''
     for ii in msg:
