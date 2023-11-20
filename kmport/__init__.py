@@ -39,6 +39,7 @@ from importlib import import_module
 printf_log_base=None
 printf_caller_detail=False
 printf_caller_tree=False
+printf_caller_name=False
 krc_define={
   'GOOD':[True,'True','Good','Ok','Pass','Sure',{'OK'}],
   'FAIL':[False,'False','Fail',{'FAL'}],
@@ -369,7 +370,7 @@ def Str(src,**opts):
     Convert data to String data
     encode : default 'utf-8','latin1','windows-1252'
     default : return to original value, if you define default value then return to the defined value
-    mode : auto, if data then convert to string, not then return to the form.
+    mode : auto, if exist data then convert to string, not then return to the form.
            'force','fix','fixed' : everything convert to string
     remove: if you want remove data then define here. (:whitespace: will remove white space to single space)
     color_code:  <color>[:<attr>]
@@ -387,10 +388,10 @@ def Str(src,**opts):
 
     if isinstance(color_code,str):
         color_code_a=color_code.split(':')
-        mode=color_code_a[1] if len(color_code_a) == 2 else None
+        cmode=color_code_a[1] if len(color_code_a) == 2 else None
         color=color_code_a[0]
-        if mode:
-            color_code=color_db.get(mode,{}).get(color)
+        if cmode:
+            color_code=color_db.get(cmode,{}).get(color)
         else:
             color_code=color_db.get('color',{}).get(color)
 
@@ -467,10 +468,10 @@ def Str(src,**opts):
         src=_byte2str_(src,encode,remove,color_code=color_code)
 
     # Force make all to string
-    if mode in ['force','fix','fixed']:
-        return '''{}'''.format(src)
-    if tuple_data: return tuple(src)
-    return src
+    if mode not in ['force','fix','fixed'] and isinstance(src,(list,tuple,dict)):
+        if tuple_data: return tuple(src)
+        return src
+    return '''{}'''.format(src)
 
 def Strings(*src,merge_symbol=' ',excludes=None,split_symbol=' '):
     '''
@@ -590,20 +591,35 @@ def Join(*inps,symbol='_-_',byte=None,ignore_type=(dict,bool,None),ignore_data=(
     src=[]
     if len(inps) == 1 and isinstance(inps[0],(list,tuple)):
         src=src+_ignore_(inps[0],ignore_type,ignore_data)
-    elif len(inps) == 2 and isinstance(inps[0],(list,tuple)) and symbol=='_-_':
-        src=src+_ignore_(inps[0],ignore_type,ignore_data)
-        symbol=inps[1]
-    else:
-        for ii in inps:
-            if isinstance(ii,(list,tuple)):
-                src=src+_ignore_(ii,ignore_type,ignore_data)
-            elif type(ii) in ignore_type:
-                continue
-            elif ii in ignore_data:
+    # if missing symbol option then just take end of inputs
+    elif len(inps) >=2:
+        mx=len(inps)
+        if symbol=='_-_':
+            symbol=inps[-1]
+            mx=mx-1
+        for i in inps[:mx]:
+            if isinstance(i,(list,tuple)):
+                src=src+_ignore_(i,ignore_type,ignore_data)
+            elif type(i) in ignore_type or i in ignore_data:
                 continue
             else:
-                src.append(ii)
-    if symbol=='_-_': symbol=''
+                src.append(i)
+    # OR    
+    # Only two input and first is list then missing symbol option then last one is symbol
+    #elif len(inps) == 2 and isinstance(inps[0],(list,tuple)) and symbol=='_-_':
+    #    src=src+_ignore_(inps[0],ignore_type,ignore_data)
+    #    symbol=inps[1]
+    #else:
+    #    for ii in inps:
+    #        if isinstance(ii,(list,tuple)):
+    #            src=src+_ignore_(ii,ignore_type,ignore_data)
+    #        elif type(ii) in ignore_type:
+    #            continue
+    #        elif ii in ignore_data:
+    #            continue
+    #        else:
+    #            src.append(ii)
+    #if symbol=='_-_': symbol=''
     rt=''
     if isinstance(byte,bool):
         if byte:
@@ -1392,7 +1408,7 @@ def IsVar(src,obj=None,default=False,mode='all',parent=0):
     if oo == '_#_': return default
     return True
 
-def IsFunction(src=None,find='_#_'):
+def IsFunction(src=None,find='_#_',builtin=False):
     '''
     Check the find is Function in src object
     '''
@@ -1401,7 +1417,10 @@ def IsFunction(src=None,find='_#_'):
             find=Global().get(find)
         return inspect.isfunction(find)
     else:
-        if type(src).__name__ in ['function','instancemethod','method']: return True # src is function then
+        if builtin:
+            if type(src).__name__ in ['function','instancemethod','method','builtin_function_or_method']: return True # src is function then
+        else:
+            if type(src).__name__ in ['function','instancemethod','method']: return True # src is function then
     # find function in object
     aa=[]
     if type(find).__name__ == 'function': find=find.__name__
@@ -2300,7 +2319,8 @@ def Frame2Function(obj,default=False):
     Get Function Object from frame or frame info
     '''
     obj_type=TypeName(obj)
-    if obj_type == 'function': return obj
+    #if obj_type == 'function': return obj
+    if IsFunction(obj): return obj
     if obj_type == 'frameinfo':
         return gc.get_referrers(obj.frame.f_code)[0]
     elif obj_type == 'frame':
@@ -2484,7 +2504,8 @@ def FunctionArgs(func,**opts):
     '''
     mode=opts.get('mode',opts.get('field','defaults'))
     default=opts.get('default',None)
-    if not Type(func,'function','method'):
+    #if not Type(func,'function','method'):
+    if not IsFunction(func):
         return default
     rt={}
     #Not support *v parameter with getargspec()
@@ -2494,7 +2515,11 @@ def FunctionArgs(func,**opts):
     #    del args[-len(defaults):]
     #    rt['defaults']=defaults
     # inspect.getcallargs(<function>,datas....) : automatically matching and put to <functions>'s inputs : Check it later
-    arg = inspect.getfullargspec(func)
+    try:
+        arg = inspect.getfullargspec(func)
+    except:
+        return rt
+
     args=arg.args
     varargs=arg.varargs
     keywords=arg.varkw
@@ -2559,12 +2584,13 @@ def Args(src,field='all',default={}):
     Get Function input parameters
     '''
     rt={}
-    if Type(src,('classobj,instance')):
+    if Type(src,('classobj','instance')):
         try:
             src=getattr(src,'__init__')
         except:
             return src.__dict__
-    elif not Type(src,'function'):
+    #elif not Type(src,'function'):
+    elif not IsFunction(src):
         return default
     return FunctionArgs(src,mode=field,default=default)
 
@@ -3042,6 +3068,7 @@ def TryCode(code,default=False,_return_=True):
     '''
     if Type(code,str):
         err=None
+        rt=None
         if _return_:
             # create file-like string to capture output
             codeOut = StringIO()
@@ -3070,14 +3097,14 @@ def TryCode(code,default=False,_return_=True):
                 codeErr.close()
             if err: #Code Error
                 if _return_:
-                    return False,err
+                    return False,rt,err
                 else:
                     StdErr(err)
             if _return_:
                 # Standard Out and Error
-                return rt,er
+                return True,rt,er
     if _return_:
-        return False,None  #Not a string code
+        return False,rt,'Not String code. required *STRING* Code.'  #Not a string code
 
 def ExceptMessage(msg='',default=None):
     '''
@@ -3880,8 +3907,8 @@ def sprintf(string,*inps,**opts):
     """{} -H {} -U {} -P '{}' """.format(*inps)
     """{0} -H {1} -U {2} -P '{3}' """.format(*inps)
     _err_ : True: missing parameter then return False, False(default): convert just possible things, others just keep return original form
-    apostrophe : True: automatically change and add when input value having apostrophe(default)
-                 None : automatically change apostrophe when input value having same apostrophe, but not automatically adding apostrophe when format string having no apostrophe
+    apostrophe : True: automatically change and add when input value having apostrophe
+                 None : automatically change apostrophe when input value having same apostrophe, but not automatically adding apostrophe when format string having no apostrophe(default)
                  False: do not change any parameter
     '''
     def _replace_format_to_value_(i,tmp,string,val,apostrophe=True):
@@ -3933,11 +3960,10 @@ def sprintf(string,*inps,**opts):
                                 else:
                                     string_a[idx]=string_a[idx].format(**val)
                         else:
-                            if "'" in val[ii]:
-                                if apostrophe:
+                            if apostrophe:
+                                if "'" in val[ii]:
                                     string_a[idx]='''"'''+val[ii]+'''"'''
-                            elif '"' in val[ii]: 
-                                if apostrophe:
+                                elif '"' in val[ii]: 
                                     string_a[idx]="""'"""+val[ii]+"""'"""
                             else:
                                 string_a[idx]=val[ii]
@@ -3954,7 +3980,7 @@ def sprintf(string,*inps,**opts):
     if not isinstance(string,str): return False,string
     ffall=[re.compile('\{(\d*)\}').findall(string),re.compile('\{(\w*)\}').findall(string),re.compile('\%\((\w*)\)s').findall(string),re.compile('\{\}').findall(string),re.compile('\%[-0-9.]*[s|c|d|f]').findall(string)]
     i=0
-    apostrophe=opts.pop('apostrophe') if 'apostrophe' in opts else True
+    apostrophe=opts.pop('apostrophe') if 'apostrophe' in opts else None
     error=opts.pop('_err_') if '_err_' in opts else False
     for tmp in ffall:
         if i in [0,1]: tmp=[ j  for j in tmp if len(j) ]
@@ -5265,6 +5291,7 @@ def printf(*msg,**opts):
     global printf_caller_detail
     global printf_caller_tree
     global printf_log_base
+    global printf_caller_name
     direct=opts.get('direct',False)
     dsp=opts.get('dsp',opts.get('mode','a'))
     if not dsp: dsp='a'
@@ -5275,6 +5302,7 @@ def printf(*msg,**opts):
     #caller=opts.get('caller',opts.get('caller_detail',Variable(src='printf_caller_detail',mode='all',parent=1,default=None)))
     #caller_tree=opts.get('caller_tree',opts.get('caller_history',Variable(src='printf_caller_tree',mode='all',parent=1,default=None)))
     #printf_log_base=Variable('printf_log_base',parent=1,mode='all')
+    parent_n=opts.get('caller_parent',1)
     caller_detail=opts.get('caller',opts.get('caller_detail',printf_caller_detail))
     caller_tree=opts.get('caller_tree',printf_caller_tree)
     caller_history=opts.get('caller_history',False)
@@ -5283,7 +5311,7 @@ def printf(*msg,**opts):
     caller_filename=opts.get('caller_filename',False)
     caller_line_number=opts.get('caller_line_number',False)
     caller_args=opts.get('caller_args',False)
-    parent_n=opts.get('caller_parent',1)
+    caller_name=opts.get('caller_name',printf_caller_name)
     syslogd=opts.get('syslogd',None)
     new_line='' if direct else opts.get('new_line',opts.get('newline',opts.get('end',opts.get('end_newline','\n'))))
     if new_line is True: new_line='\n'
@@ -5351,11 +5379,9 @@ def printf(*msg,**opts):
     if not direct:
         if caller_detail or caller_tree or caller_history or caller_ignore:
             if ignore_myself:
-                if caller_ignore and isinstance(caller_ignore,list):
-                    caller_ignore.append('FeedFunc')
-                    caller_ignore.append('printf')
-                else:
-                    caller_ignore=['FeedFunc','printf']
+                if not isinstance(caller_ignore,list): caller_ignore=[]
+                if 'FeedFunc' not in caller_ignore: caller_ignore.append('FeedFunc')
+                if 'printf' not in caller_ignore: caller_ignore.append('printf')
         if caller_ignore and isinstance(caller_ignore,list):
             arg={'parent':parent_n,'args':False,'history':True,'tree':False}
             call_name=FunctionName(**arg)
@@ -5376,26 +5402,28 @@ def printf(*msg,**opts):
                 parent_n='-'.join(parent_n_a)
             elif isinstance(parent_n,int):
                 parent_n=parent_n+new_p
-        arg={'parent':parent_n}
-        if caller_detail:
-            arg.update({'line_number':True,'full_filename':caller_full_filename,'filename':True,'args':True})
-        else:
-            arg['line_number']=caller_line_number
-            arg['full_filename']=caller_full_filename
-            arg['args']=caller_args
-            arg['filename']=caller_filename
-        if caller_tree:
-            arg.update({'history':True,'tree':True})
-        else:
-            arg['history']=caller_history
-        call_name=FunctionName(**arg)
-        if call_name:
-            # if line_number and filename then print logging at next line
-            # if date_format then logging's intro length will be date format
-            # if not date_format then loggin's intro length will be stepping length
-            if caller_tree or caller_history: call_name=call_name+[''] if date_format else call_name+[' ']
-            intro_msg=intro_msg+WrapString(Join(call_name,'\n'),fspace=0, nspace=len(intro_msg),mode='space') + ': '
-            intro_len=intro_len+len(call_name[-1])+2
+        if caller_name or caller_ignore:
+            arg={'parent':parent_n}
+            if caller_detail:
+                arg.update({'line_number':True,'full_filename':caller_full_filename,'filename':True,'args':True})
+            else:
+                arg['line_number']=caller_line_number
+                arg['full_filename']=caller_full_filename
+                arg['args']=caller_args
+                arg['filename']=caller_filename
+            if caller_tree:
+                arg.update({'history':True,'tree':True})
+            else:
+                arg['history']=caller_history
+            call_name=FunctionName(**arg)
+            if call_name:
+                # if line_number and filename then print logging at next line
+                # if date_format then logging's intro length will be date format
+                # if not date_format then loggin's intro length will be stepping length
+                if isinstance(call_name,str): call_name=[call_name]
+                if caller_tree or caller_history: call_name=call_name+[''] if date_format else call_name+[' ']
+                intro_msg=intro_msg+WrapString(Join(call_name,'\n'),fspace=0, nspace=len(intro_msg),mode='space') + ': '
+                intro_len=intro_len+len(call_name[-1])+2
         if Type(intro,'str') and intro:
             intro_msg=intro_msg+intro+': '
             intro_len=intro_len+len(intro)+2
@@ -5409,7 +5437,8 @@ def printf(*msg,**opts):
 
     #When having Log function then give the data to log function
     log_p=False
-    if Type(log,'function','method'):
+    #if Type(log,'function','method'):
+    if IsFunction(log):
         try:
             #FeedFunc(log,start_newline+msg_str+new_line,**opts)
             # Reduce duplicated newline
@@ -5836,7 +5865,7 @@ def Pop(src,key,default=None):
 
 def IsTrue(condition,requirements=None,**opts):
     condition_type=type(condition).__name__
-    if IsFunction(condition):
+    if IsFunction(condition,builtin=False):
         opts['parent']=3 if 'parent' not in opts else opts['parent']+2
         if FeedFunc(condition,**opts):
             return True
@@ -6815,6 +6844,114 @@ class FILE_W:
         else:
             print('Can not read {}'.format(filename))
             return False
+
+class TRY:
+    def __init__(self,auto=None,logfile=None,log_all=False,err_screen=False,err_exit=False,default=None,log=None):
+        self.auto=auto #True: All auto, None: defaults auto, False: not use
+        self.logfile=logfile
+        self.log_all=log_all
+        self.log=log
+        self.err_exit=err_exit
+        self.err_screen=True if err_exit else err_screen
+        
+        self.rc=None #None: not run, False: something error, True: run function
+        self.result=default
+        self.error=None
+
+    def __repr__(self):
+        if self.result:
+            return Str(self.result)
+        return ''
+
+    def run(self,func,*inps,**opts):
+        #if Type(func,'function'):
+        if IsFunction(func,builtin=True):
+            arg=Args(func)
+            if self.log_all:
+                printf('Try Function: {}{}\nRecived: {}, {}'.format(func.__name__,FunctionArgs(func,mode='string'),inps,opts),date=True,caller_tree=True,caller_parent='1-5',caller_filename=True,caller_line_number=True,logfile=self.logfile,log=self.log,dsp='f' if self.logfile else 'a')
+
+            ninps=[]
+            nopts={}
+            if self.auto is not False:
+                ninps_n=0
+                ninps_o=0
+                opts_i=list(opts.items())
+                while len(arg.get('args',[])) > ninps_n:
+                    if ninps_n < len(inps):
+                        ninps.append(inps[ninps_n])
+                    elif self.auto is True and ninps_n < len(inps)+len(opts):
+                        if opts_i[ninps_o][0] not in arg.get('defaults',{}):
+                            ninps.append(opts_i[ninps_o][1])
+                            ninps_o+=1
+                    else:
+                        break
+                    ninps_n+=1
+                if arg.get('varargs'):
+                    ninps=ninps+inps[ninps_n:]
+                    ninps_n=len(inps)
+                no_inps=False
+                if ninps_o > 0 : opts=dict(opts_i[ninps_o:])
+                for k in arg.get('defaults',{}):
+                    if k in opts:
+                        nopts[k]=opts.pop(k)
+                        no_inps=True
+                    else:
+                        # Fill in to inps for default with extra remained inps
+                        if not no_inps and ninps_n < len(inps):
+                            ninps.append(inps[ninps_n])
+                            ninps_n+=1
+                        else:
+                            nopts[k]=arg.get('defaults').get(k)
+                            no_inps=True
+                if arg.get('keywords') and opts:
+                    nopts.update(opts)
+                if self.log_all:
+                    printf('New Inputs: {} {}'.format(ninps,nopts),date=True,logfile=self.logfile,log=self.log,dsp='f' if self.logfile else 'a')
+            try:
+                self.rc=True
+                if self.auto is False:
+                    self.result=func(*inps,**opts)
+                else:
+                    if not arg and type(func).__name__ == 'builtin_function_or_method':
+                        try:
+                            self.result=func(*inps,**opts)
+                        except:
+                            e=ExceptMessage()
+                            self.error=e+'(function name: {})'.format(func.__name__)
+                            self.rc=False
+                    else:
+                        self.result=func(*ninps,**nopts)
+                if self.log_all:
+                    printf('RC:{}\nResult:{}'.format(self.rc,self.result),date=True,logfile=self.logfile,log=self.log,dsp='f' if self.logfile else 'a')
+                return self
+            except:
+                e=ExceptMessage()
+                if self.logfile or self.log:
+                    printf(e,date=True,caller_tree=True,caller_parent='1-5',caller_filename=True,caller_line_number=True,logfile=self.logfile,log=self.log,dsp='f')
+                if self.err_screen:
+                    printf(e,mode='e')
+                if self.err_exit:
+                    os._exit(1)
+                self.rc=False
+                self.error=e
+                return self
+        elif isinstance(func,str):
+            self.rc,self.result,self.error=TryCode(func,default=False,_return_=True)
+            return self
+        self.rc=False
+        self.error='Not [support] function'
+        if self.log_all:
+            printf('RC:{}\nResult:{}\nError:{}'.format(self.rc,self.result,self.error),date=True,logfile=self.logfile,log=self.log,dsp='f' if self.logfile else 'a')
+        return self
+
+    def Result(self):
+        return self.result
+
+    def Rc(self):
+        return self.rc
+
+    def Error(self):
+        return self.error
 
 
 #if __name__ == "__main__":
