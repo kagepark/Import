@@ -3737,16 +3737,18 @@ def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin
         printed=False
         i=0
         while True:
-            if stop(): break
+            if stop():
+                if progress_post_new_line and printed:
+                    printf('\n',direct=True,log=log,log_level=1)
+                break
             if i > progress_interval*10:
                 i=0
                 printf('>',direct=True,log=log,log_level=1)
                 printed=True
             i+=1
             time.sleep(0.1)
-        if progress_post_new_line:
-            if printed:
-                printf('\n',direct=True,log=log,log_level=1)
+        if progress_post_new_line and printed:
+            printf('\n',direct=True,log=log,log_level=1)
     start_time=TIME()
     if not Type(cmd,'str',data=True):
         return -1,'wrong command information :{0}'.format(cmd),'',start_time.Init(),start_time.Init(),start_time.Now(int),cmd,path
@@ -5269,7 +5271,7 @@ def printf(*msg,**opts):
           caller_history=False/True : return history without tree
     syslogd=                     : logging to syslogd daemon
     end_newline=True/False       : mark new line at end of the line
-    start_newline=True/False     : mark new line at start of the line
+    start_newline=False/True     : mark new line at start of the line
     intro=<str>                  : log intro string before log data
     log_level=<int>              : make log-level
         printf_log_base=6
@@ -5313,10 +5315,10 @@ def printf(*msg,**opts):
     caller_args=opts.get('caller_args',False)
     caller_name=opts.get('caller_name',printf_caller_name)
     syslogd=opts.get('syslogd',None)
-    new_line='' if direct else opts.get('new_line',opts.get('newline',opts.get('end',opts.get('end_newline','\n'))))
+    new_line='' if direct else opts.get('new_line',opts.get('newline',opts.get('end',opts.get('end_newline',opts.get('post_newline','\n')))))
     if new_line is True: new_line='\n'
     elif new_line is False: new_line=''
-    start_newline='' if direct else opts.get('start_newline','')
+    start_newline='' if direct else opts.get('start_newline',opts.get('start',opts.get('pre_newline','')))
     if start_newline is True: start_newline='\n'
     elif start_newline is False: start_newline=''
     #form=opts.get('form')
@@ -5442,10 +5444,11 @@ def printf(*msg,**opts):
         try:
             #FeedFunc(log,start_newline+msg_str+new_line,**opts)
             # Reduce duplicated newline
-            msg_str_log=msg_str if not direct and opts.get('start_newline') in [True,'\n',start_newline] else start_newline + msg_str
-            msg_str_log=msg_str_log if not direct and opts.get('new_line',opts.get('newline',opts.get('end',opts.get('end_newline','\n')))) in [True,'\n',new_line] else msg_str_log+new_line
-            FeedFunc(log,msg_str_log,**opts)
-            log_p=True
+            if msg_str: #If no message then ignore
+                msg_str_log=msg_str if not direct and opts.get('start_newline') in [True,'\n',start_newline] else start_newline + msg_str
+                msg_str_log=msg_str_log if not direct and opts.get('new_line',opts.get('newline',opts.get('end',opts.get('end_newline','\n')))) in [True,'\n',new_line] else msg_str_log+new_line
+                FeedFunc(log,msg_str_log,**opts)
+                log_p=True
         except:
             pass
 
@@ -5456,7 +5459,7 @@ def printf(*msg,**opts):
                 return
         # Save msg to file when defined logfile
         #if ('f' in dsp or 'a' in dsp) and logfile:
-        if logfile:
+        if logfile and msg_str:
             for ii in logfile:
                 if isinstance(ii,str) and ii:
                     ii_d=os.path.dirname(ii)
@@ -5466,13 +5469,14 @@ def printf(*msg,**opts):
                         with open(ii,'a+') as f:
                             f.write(start_newline+msg_str+new_line)
         # print msg to screen when did not done with logfile or log function
-        if (log_p is False and 'a' in dsp) or 's' in dsp or 'e' in dsp:
-             if 'e' in dsp:
-                 StdErr(start_newline+msg_str+new_line)
-             elif 'c' in dsp: #Display to console (it also work with Robot Framework)
-                 print(start_newline+msg_str+new_line,end='',file=sys.__stdout__)
-             else: # Print out on screen
-                 StdOut(start_newline+msg_str+new_line)
+        if msg_str:
+            if (log_p is False and 'a' in dsp) or 's' in dsp or 'e' in dsp:
+                 if 'e' in dsp:
+                     StdErr(start_newline+msg_str+new_line)
+                 elif 'c' in dsp: #Display to console (it also work with Robot Framework)
+                     print(start_newline+msg_str+new_line,end='',file=sys.__stdout__)
+                 else: # Print out on screen
+                     StdOut(start_newline+msg_str+new_line)
     # return msg when required return whatever condition
     if 'r' in dsp:
          return msg_str
