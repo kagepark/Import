@@ -3738,8 +3738,8 @@ def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin
         i=0
         while True:
             if stop():
-                if progress_post_new_line and printed:
-                    printf('\n',direct=True,log=log,log_level=1)
+                #if progress_post_new_line and printed:
+                #    printf('\n',direct=True,log=log,log_level=1)
                 break
             if i > progress_interval*10:
                 i=0
@@ -5436,6 +5436,15 @@ def printf(*msg,**opts):
             msg_str=msg_str if msg_str else intro_msg + ColorStr(WrapString(Str(pprint.pformat(ii),default='org'),fspace=intro_len if msg_str else 0, nspace=intro_len,mode='space'),**opts)
         else:
             msg_str=msg_str if msg_str else intro_msg + ColorStr(WrapString(Str(ii,default='org'),fspace=intro_len if msg_str else 0, nspace=intro_len,mode='space'),**opts)
+    if msg_str:
+        if not start_newline and new_line and not direct:
+            failed=Import('import blessed')
+            if not failed:
+                term=blessed.Terminal()
+                cur=term.get_location()
+                if isinstance(cur,tuple) and len(cur) == 2:
+                    if cur[1] > 0:
+                        msg_str='\n'+msg_str
 
     #When having Log function then give the data to log function
     log_p=False
