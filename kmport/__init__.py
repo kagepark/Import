@@ -5321,6 +5321,7 @@ def printf(*msg,**opts):
     start_newline='' if direct else opts.get('start_newline',opts.get('start',opts.get('pre_newline','')))
     if start_newline is True: start_newline='\n'
     elif start_newline is False: start_newline=''
+    auto_fit=opts.get('auto_fit',False)
     #form=opts.get('form')
     intro=opts.get('intro',None)
     logfile=opts.get('logfile',opts.get('log_file',[]))
@@ -5436,7 +5437,7 @@ def printf(*msg,**opts):
             msg_str=msg_str if msg_str else intro_msg + ColorStr(WrapString(Str(pprint.pformat(ii),default='org'),fspace=intro_len if msg_str else 0, nspace=intro_len,mode='space'),**opts)
         else:
             msg_str=msg_str if msg_str else intro_msg + ColorStr(WrapString(Str(ii,default='org'),fspace=intro_len if msg_str else 0, nspace=intro_len,mode='space'),**opts)
-    if msg_str:
+    if auto_fit is True and msg_str:
         if not start_newline and new_line and not direct:
             failed=Import('import blessed')
             if not failed:
