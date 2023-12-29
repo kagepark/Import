@@ -40,6 +40,7 @@ printf_log_base=None
 printf_caller_detail=False
 printf_caller_tree=False
 printf_caller_name=False
+printf_line_buff=[]
 krc_define={
   'GOOD':[True,'True','Good','Ok','Pass','Sure',{'OK'}],
   'FAIL':[False,'False','Fail',{'FAL'}],
@@ -5294,6 +5295,7 @@ def printf(*msg,**opts):
     global printf_caller_tree
     global printf_log_base
     global printf_caller_name
+    global printf_line_buff
     direct=opts.get('direct',False)
     dsp=opts.get('dsp',opts.get('mode','a'))
     if not dsp: dsp='a'
@@ -5321,7 +5323,7 @@ def printf(*msg,**opts):
     start_newline='' if direct else opts.get('start_newline',opts.get('start',opts.get('pre_newline','')))
     if start_newline is True: start_newline='\n'
     elif start_newline is False: start_newline=''
-    auto_fit=opts.get('auto_fit',False)
+    #auto_fit=opts.get('auto_fit',False)
     #form=opts.get('form')
     intro=opts.get('intro',None)
     logfile=opts.get('logfile',opts.get('log_file',[]))
@@ -5437,16 +5439,18 @@ def printf(*msg,**opts):
             msg_str=msg_str if msg_str else intro_msg + ColorStr(WrapString(Str(pprint.pformat(ii),default='org'),fspace=intro_len if msg_str else 0, nspace=intro_len,mode='space'),**opts)
         else:
             msg_str=msg_str if msg_str else intro_msg + ColorStr(WrapString(Str(ii,default='org'),fspace=intro_len if msg_str else 0, nspace=intro_len,mode='space'),**opts)
-    if auto_fit is True and msg_str:
-        if not start_newline and new_line and not direct:
-            failed=Import('import blessed')
-            if not failed:
-                term=blessed.Terminal()
-                cur=term.get_location()
-                if isinstance(cur,tuple) and len(cur) == 2:
-                    if cur[1] > 0:
-                        msg_str='\n'+msg_str
+    #if auto_fit is True and msg_str:
+    #    if not start_newline and new_line and not direct:
+    #        failed=Import('import blessed')
+    #        if not failed:
+    #            term=blessed.Terminal()
+    #            cur=term.get_location()
+    #            if isinstance(cur,tuple) and len(cur) == 2:
+    #                if cur[1] > 0:
+    #                    msg_str='\n'+msg_str
 
+    tstart_newline='' if msg_str and msg_str[0] == '\n' and start_newline else start_newline
+    tnew_line='' if msg_str and msg_str[-1] == '\n' and new_line else new_line
     #When having Log function then give the data to log function
     log_p=False
     #if Type(log,'function','method'):
@@ -5455,9 +5459,22 @@ def printf(*msg,**opts):
             #FeedFunc(log,start_newline+msg_str+new_line,**opts)
             # Reduce duplicated newline
             if msg_str: #If no message then ignore
-                msg_str_log=msg_str if not direct and opts.get('start_newline') in [True,'\n',start_newline] else start_newline + msg_str
-                msg_str_log=msg_str_log if not direct and opts.get('new_line',opts.get('newline',opts.get('end',opts.get('end_newline','\n')))) in [True,'\n',new_line] else msg_str_log+new_line
-                FeedFunc(log,msg_str_log,**opts)
+                #Auto New line(auto_fit)
+                if not direct and log in printf_line_buff and not start_newline and msg_str[0]!='\n':
+                    FeedFunc(log,'\n',**opts)
+                if tstart_newline and log not in printf_line_buff:
+                    #Remove duplicated '\n' at last-end and current-fist
+                    FeedFunc(log,msg_str+tnew_line,**opts)
+                else:
+                    FeedFunc(log,tstart_newline+msg_str+tnew_line,**opts)
+                    
+                #msg_str_log=msg_str if not direct and opts.get('start_newline') in [True,'\n',start_newline] else start_newline + msg_str
+                #msg_str_log=msg_str_log if not direct and opts.get('new_line',opts.get('newline',opts.get('end',opts.get('end_newline','\n')))) in [True,'\n',new_line] else msg_str_log+new_line
+                #FeedFunc(log,msg_str_log,**opts)
+                if new_line or msg_str[-1] == '\n':
+                    if log in printf_line_buff: printf_line_buff.remove(log)
+                else:
+                    if log not in printf_line_buff: printf_line_buff.append(log)
                 log_p=True
         except:
             pass
@@ -5477,16 +5494,50 @@ def printf(*msg,**opts):
                     if ii and os.path.isdir(ii_d):
                         log_p=True
                         with open(ii,'a+') as f:
-                            f.write(start_newline+msg_str+new_line)
+                            #Auto New line(auto_fit)
+                            if not direct and 'file' in printf_line_buff and not start_newline and msg_str[0]!='\n':
+                                f.write('\n')
+                            if tstart_newline and 'file' not in printf_line_buff:
+                                #Remove duplicated '\n' at last-end and current-fist
+                                f.write(msg_str+tnew_line)
+                            else:
+                                f.write(tstart_newline+msg_str+tnew_line)
+            #Auto New line
+            if new_line or msg_str[-1] == '\n':
+                if 'file' in printf_line_buff: printf_line_buff.remove('file')
+            else:
+                if 'file' not in printf_line_buff: printf_line_buff.append('file')
         # print msg to screen when did not done with logfile or log function
         if msg_str:
             if (log_p is False and 'a' in dsp) or 's' in dsp or 'e' in dsp:
                  if 'e' in dsp:
-                     StdErr(start_newline+msg_str+new_line)
+                     #Auto New line(auto_fit)
+                     if not direct and 'e' in printf_line_buff and not start_newline and msg_str[0]!='\n':
+                         StdErr('\n')
+                     if tstart_newline and 'e' not in printf_line_buff:
+                         #Remove duplicated '\n' at last-end and current-fist
+                         StdErr(msg_str+tnew_line)
+                     else:
+                         StdErr(tstart_newline+msg_str+tnew_line)
+                     if new_line or msg_str[-1] == '\n':
+                         if 'e' in printf_line_buff: printf_line_buff.remove('e')
+                     else:
+                         if 'e' not in printf_line_buff: printf_line_buff.append('e')
                  elif 'c' in dsp: #Display to console (it also work with Robot Framework)
                      print(start_newline+msg_str+new_line,end='',file=sys.__stdout__)
                  else: # Print out on screen
-                     StdOut(start_newline+msg_str+new_line)
+                     #Auto New line(auto_fit)
+                     if not direct and 's' in printf_line_buff and not start_newline and msg_str[0]!='\n':
+                         StdOut('\n')
+                     if tstart_newline and 's' not in printf_line_buff:
+                         #Remove duplicated '\n' at last-end and current-fist
+                         StdOut(msg_str+tnew_line)
+                     else:
+                         StdOut(tstart_newline+msg_str+tnew_line)
+                     if new_line or msg_str[-1] == '\n':
+                         if 's' in printf_line_buff: printf_line_buff.remove('s')
+                     else:
+                         if 's' not in printf_line_buff: printf_line_buff.append('s')
     # return msg when required return whatever condition
     if 'r' in dsp:
          return msg_str
