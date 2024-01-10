@@ -474,28 +474,52 @@ def Str(src,**opts):
         return src
     return '''{}'''.format(src)
 
-def Strings(*src,merge_symbol=' ',excludes=None,split_symbol=' '):
+def Strings(*src,merge_symbol=' ',excludes=None,split_symbol=' ',mode=None):
     '''
     merge multiple strings to single string
     merge_symbol=' ' : default ' '. merge with that symbol between strings
     split_symbol=' ' : default ' '. split each strings with the symbol for check excludes
     excludes   : excluding strings(str with comma, list, tuple), which is not support space
     '''
+    def string_to_shell_line(src):
+        new_shell_line=''
+        src_a=src.split('\n')
+        src_mx=len(src_a)
+        src_m=len(src_a)-1
+        for i in range(0,src_mx):
+            i_a=src_a[i].strip().split()
+            if i_a:
+                if i_a[-1] in ['do','then','else']:
+                    new_shell_line=new_shell_line+' '+src_a[i].lstrip()
+                else:
+                    if i >= src_m:
+                        new_shell_line=new_shell_line+' '+src_a[i].lstrip()
+                    else:
+                        new_shell_line=new_shell_line+' '+src_a[i].lstrip()+';'
+        return new_shell_line
+
     out=[]
-    if isinstance(excludes,(str,list,tuple)):
-        if isinstance(excludes,str):
-            excludes=excludes.split(',')
-    if isinstance(excludes,(list,tuple)) and excludes:
-        for i in src:
-            i_o=[]
-            if Type(i,('str','bytes')):
-                for ii in Split(i,split_symbol):
-                    if IsIn(ii,excludes): continue
-                    i_o.append(ii)
-            if i_o: out.append(Join(i_o,symbol=split_symbol))
-        return Join(out,symbol=merge_symbol)
+    if mode == 'shell':
+        if isinstance(src,str):
+            return string_to_shell_line(src)
+        elif isinstance(src,tuple) and len(src) == 1 and isinstance(src[0],str):
+            return string_to_shell_line(src[0])
     else:
-        return Join(src,symbol=merge_symbol)
+        if isinstance(excludes,(str,list,tuple)):
+            if isinstance(excludes,str):
+                excludes=excludes.split(',')
+        if isinstance(excludes,(list,tuple)) and excludes:
+            for i in src:
+                i_o=[]
+                if Type(i,('str','bytes')):
+                    for ii in Split(i,split_symbol):
+                        if IsIn(ii,excludes): continue
+                        i_o.append(ii)
+                if i_o: out.append(Join(i_o,symbol=split_symbol))
+            return Join(out,symbol=merge_symbol)
+        else:
+            return Join(src,symbol=merge_symbol)
+        
             
 def Default(a,b=None):
     '''
