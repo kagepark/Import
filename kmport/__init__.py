@@ -40,7 +40,9 @@ printf_log_base=None
 printf_caller_detail=False
 printf_caller_tree=False
 printf_caller_name=False
-printf_line_buff=[]
+printf_scr_dbg=False
+printf_ignore_empty=True
+
 krc_define={
   'GOOD':[True,'True','Good','Ok','Pass','Sure',{'OK'}],
   'FAIL':[False,'False','Fail',{'FAL'}],
@@ -90,6 +92,49 @@ Import('import requests')
 
 Without build then import requests is ok. but if you build it then it need pre-loaded Morsel module for Import('import requests') command
 '''
+class PRINTED:
+    def __init__(self,data=None,mode=None,mode_data=True):
+        if type(data).__name__ == 'PRINTED':
+            self.data=data.data
+        elif isinstance(data,dict):
+            self.data=data
+        else:
+            self.data={}
+        if isinstance(self.data,dict) and mode:
+            mode=list(mode) if isinstance(mode,str) else [mode]
+            for dd in mode:
+                self.data[dd]=mode_data if isinstance(mode_data,bool) else True
+        elif isinstance(data,bool):
+            self.data['a']=data
+    def Put(self,mode=None,value=None):
+        if mode and isinstance(value,bool):
+            mode=list(mode) if isinstance(mode,str) else [mode]
+            for dd in mode:
+                self.data[dd]=value
+    def Del(self,mode=None):
+        if isinstance(self.data,dict) and mode:
+            mode=list(mode) if isinstance(mode,str) else [mode]
+            for dd in mode:
+                if dd in self.data: self.data.pop(dd)
+        elif self.data is True:
+            self.data=False
+    def Get(self,mode=None):
+        if isinstance(self.data,dict) and mode:
+            mode=list(mode) if isinstance(mode,str) else [mode]
+            for dd in mode:
+                #if dd in ['d','a'] and self.data: return True
+                if dd == 'd' and True in self.data.values(): return True
+                elif dd == 'a': # auto(a): a,s,e
+                   if self.data.get('a') or self.data.get('s') or self.data.get('e'):
+                       return True
+                # s,e,f
+                elif self.data.get(dd) is True: return True
+        elif self.data is True:
+            return True
+        return False
+
+printf_newline_info=PRINTED()
+
 def Global():
     '''
     Method's global variables
@@ -1745,7 +1790,7 @@ def CompVersion(*inp,**opts):
                 dd=dest[i]
                 if type(ss) != type(dd):
                     ss=Str(src[i])
-                    ss=Str(dest[i])
+                    dd=Str(dest[i])
                 if ss > dd:
                     return 1
                 elif ss < dd:
@@ -3306,23 +3351,6 @@ def IpV4(ip,out='str',default=False,port=None,bmc=False,used=False,pool=None,sup
     return default
 
 def ping(host,**opts):
-    '''
-    same as ping command
-    True : pinging
-    False: can not ping
-    0    : Canceled ping
-    '''
-    count=opts.get('count',0)
-    interval=opts.get('interval',1)
-    keep_good=opts.get('keep_good',0)
-    keep_bad=opts.get('keep_bad',0)
-    timeout=opts.get('timeout',opts.get('timeout_sec',0))
-    lost_mon=opts.get('lost_mon',False)
-    log=opts.get('log',None)
-    log_format=opts.get('log_format','.')
-    alive_port=opts.get('alive_port')
-    end_newline=opts.get('end_newline','\n')
-    cancel_func=opts.get('cancel_func',opts.get('stop_func',None))
     ICMP_ECHO_REQUEST = 8 # Seems to be the same on Solaris. From /usr/include/linux/icmp.h;
     ICMP_CODE = socket.getprotobyname('icmp')
     ERROR_DESCR = {
@@ -3331,7 +3359,6 @@ def ping(host,**opts):
         10013: ' - Note that ICMP messages can only be sent by'
                ' users or processes with administrator rights.'
         }
-
     def checksum(msg):
         sum = 0
         size = (len(msg) // 2) * 2
@@ -3368,7 +3395,7 @@ def ping(host,**opts):
                 return received_time - stime
             timeout -= received_time - stime
 
-    def pinging(ip,timeout=1,size=64):
+    def ping_func(ip,timeout=1,size=64):
         try:
             my_socket = socket.socket(socket.AF_INET, socket.SOCK_RAW, ICMP_CODE)
         except socket.error as e:
@@ -3388,14 +3415,8 @@ def ping(host,**opts):
         if delay:
             return delay,size
 
-    def do_ping(ip,timeout=1,size=64,count=None,interval=0.7,log_format='ping',cancel_func=False):
-        ok=1
-        i=1
-        ping_cmd=find_executable('ping')
-        printed=False
-        while True:
-            if IsBreak(cancel_func):
-                return -1,'canceled'
+    def _ping_(ip,timeout=1,size=64,log_format='ping'):
+            ping_cmd=find_executable('ping')
             if ping_cmd:
                 ping_s=size-8 if size >= 8 else 0
                 rc=rshell("ping -s {} -c 1 {}".format(ping_s,host))
@@ -3405,88 +3426,84 @@ def ping(host,**opts):
                     tt=rc[1].split('\n')[1].split()
                     delay=[float(tt[6].split('=')[1])/1000,tt[0]]
             else:
-               delay=pinging(ip,timeout,size)
-            if delay:
-                ok=0
-                if log_format == '.':
-                    printf('.',direct=True,log=log,log_level=1)
-                    printed=True
-                elif log_format == 'd':
-                    printf('.',direct=True,log=log,log_level=1,dsp='d')
-                    printed=True
-                elif log_format == 'ping':
-                    printf('{} bytes from {}: icmp_seq={} ttl={} time={} ms'.format(delay[1],ip,i,size,round(delay[0]*1000.0,4)),log=log,log_level=1)
+               delay=ping_func(ip,timeout,size)
+            if log_format == 'ping':
+                if delay:
+                    return 0,ip,size,timeout,delay[1],round(delay[0]*1000.0,4)
+                else:
+                    return 1,ip,size,timeout,None,None
             else:
-                ok=1
-                if log_format == '.':
-                    printf('x',direct=True,log=log,log_level=1)
-                    printed=True
-                elif log_format == 'd':
-                    printf('x',direct=True,log=log,log_level=1,dsp='d')
-                    printed=True
-                elif log_format == 'ping':
-                    printf('{} icmp_seq={} timeout ({} second)'.format(ip,i,timeout),log=log,log_level=1)
-            if isinstance(count,int) and count:
-                count-=1
-                if count < 1:
-                    return ok,'{} is {}'.format(ip,'alive' if ok == 0 else 'death'),printed
-            i+=1
-            time.sleep(interval)
+                if delay:
+                    return 0,'.',size,timeout,None,None
+                else:
+                    return 1,'x',size,timeout,None,None
 
-    #PING() function
-    if not IpV4(host,support_hostname=opts.get('support_hostname',True)): return False
-    if log_format=='ping':
-        if not count: count=1
-        do_ping(host,timeout=timeout,size=64,count=count,log_format='ping',cancel_func=cancel_func)
-    else:
-        if alive_port:
-            return True if IpV4(host,port=alive_port,support_hostname=opts.get('support_hostname',True)) else False
-        good=False
-        Time=TIME()
-        gTime=TIME()
-        bTime=TIME()
-        printed=False
-        while True:
-           rc=do_ping(host,timeout=1,size=64,count=1,log_format=None,cancel_func=cancel_func)
-           printed=rc[-1]
-           if rc[0] == -1:
-              printf('- ping({}) - Canceled/Stopped ping by cancel signal'.format(host),log=log,dsp='f')
-              if printed: 
-                 printf('\n',direct=True,log_level=1,log=log, dsp='d' if log_format =='d' else 's')
-              return 0 # Cancel return value
-           elif rc[0] == 0:
-              good=True
+    '''
+    same as ping command
+    True : pinging
+    False: can not ping
+    0    : Canceled ping
+    '''
+    count=Int(opts.get('count'),0)
+    interval=Int(opts.get('interval'),1)
+    keep_good=Int(opts.get('keep_good',opts.get('keep_ping',opts.get('keep',opts.get('good',opts.get('pinging'))))),0)
+    keep_bad=Int(opts.get('keep_bad',opts.get('bad')),0)
+    timeout=Int(opts.get('timeout',opts.get('timeout_sec')),0)
+    lost_mon=opts.get('lost_mon',False)
+    log=opts.get('log',None)
+    log_format=opts.get('log_format','.')
+    alive_port=opts.get('alive_port')
+    end_newline=opts.get('end_newline',opts.get('newline',opts.get('end','\n')))
+    cancel_func=opts.get('cancel_func',opts.get('stop_func',opts.get('cancel',opts.get('stop',None))))
+    if alive_port:
+        return True if IpV4(host,port=alive_port,support_hostname=opts.get('support_hostname',True)) else False
+    good=False
+    Time=TIME()
+    gTime=TIME()
+    bTime=TIME()
+    dspi='d' if log_format =='d' else 's' if log_format not in ['n','i'] else 'i'
+    local_printed=False
+    i=0
+    while True:
+       if IsBreak(cancel_func):
+          printf('- ping({}) - Canceled/Stopped ping by cancel signal'.format(host),first_newline=True,log=log,dsp=dspi)
+          break
+       rc=_ping_(host,timeout=1,size=64,log_format=log_format)
+       if rc[0] == 0:
+          good=True
+          if not count:
               bTime.Init()
-              if isinstance(keep_good,int) and keep_good:
-                  if gTime.Out(keep_good):
-                      if printed: 
-                         printf('\n',direct=True,log_level=1,log=log, dsp='d' if log_format =='d' else 's')
-                      return True
+              if keep_good:
+                  if gTime.Out(keep_good): break
               else:
-                  if printed: 
-                     printf('\n',direct=True,log_level=1,log=log, dsp='d' if log_format =='d' else 's')
-                  return True
-              printf('.',direct=True,log=log,log_level=1,dsp='d' if log_format =='d' else 's')
-              printed=True
-           else:
-              good=False
+                  break
+          if log_format == 'ping':
+              printf('{} bytes from {}: icmp_seq={} ttl={} time={} ms'.format(rc[4],rc[1],i,rc[2],rc[5]),log=log,dsp=dspi)
+          elif dspi in ['d','s']:
+              printf('.',direct=True,log=log,log_level=1,dsp=dspi,scr_dbg=False)
+              local_printed=True
+       else:
+          good=False
+          if not count:
               gTime.Init()
-              if isinstance(keep_bad,int) and keep_bad:
-                  if bTime.Out(keep_bad):
-                      if printed: 
-                         printf('\n',direct=True,log_level=1,log=log, dsp='d' if log_format =='d' else 's')
-                      return False
-              printf('x',direct=True,log_level=1,log=log, dsp='d' if log_format =='d' else 's')
-              printed=True
-           if isinstance(count,int) and count:
-               count-=1
-               if count < 1: break
-           if Time.Out(timeout): break
-           TIME().Sleep(interval)
-        if end_newline and printed: 
-           if end_newline is True: end_newline='\n'
-           printf(end_newline,direct=True,log_level=1,log=log, dsp='d' if log_format =='d' else 's')
-        return good
+              if keep_bad:
+                  if bTime.Out(keep_bad): break
+              else:
+                  break
+          if log_format == 'ping':
+              printf('{} icmp_seq={} timeout ({} second)'.format(rc[1],i,rc[3]),log=log,dsp=dspi)
+          elif dspi in ['d','s']:
+              printf('x',direct=True,log_level=1,log=log, dsp=dspi,scr_dbg=False)
+              local_printed=True
+       if count:
+           count-=1
+           if count < 1: break
+       if Time.Out(timeout): break
+       time.sleep(interval)
+       i+=1
+    if end_newline:
+        if local_printed: printf('',log=log, dsp=dspi,ignore_empty=False)
+    return good
 
 class WEB:
     '''
@@ -3758,22 +3775,19 @@ def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin
             if stop():
                 return
         if progress_pre_new_line:
-            printf('\n',direct=True,log=log,log_level=1)
-        printed=False
+            printf('',ignore_empty=False,start_newline=True,log=log,end='',log_level=1)
+        local_printed=False
         i=0
         while True:
-            if stop():
-                #if progress_post_new_line and printed:
-                #    printf('\n',direct=True,log=log,log_level=1)
-                break
+            if stop(): break
             if i > progress_interval*10:
                 i=0
                 printf('>',direct=True,log=log,log_level=1)
-                printed=True
+                local_printed=True
             i+=1
             time.sleep(0.1)
-        if progress_post_new_line and printed:
-            printf('\n',direct=True,log=log,log_level=1)
+        if progress_post_new_line and local_printed:
+            printf('',ignore_empty=False,no_intro=True,log=log,log_level=1)
     start_time=TIME()
     if not Type(cmd,'str',data=True):
         return -1,'wrong command information :{0}'.format(cmd),'',start_time.Init(),start_time.Init(),start_time.Now(int),cmd,path
@@ -4510,7 +4524,18 @@ def Space(num=4,fill=None,mode='space',tap=''):
         tap=tap+fill
     return tap
 
-def WrapString(string,fspace=0,nspace=0,new_line='\n',flength=0,nlength=0,ntap=0,NFLT=False,mode='space',default='',out='str'):
+def WrapString(string,fspace=0,nspace=0,new_line='\n',flength=0,nlength=0,ntap=0,NFLT=False,mode='space',default='',out='str',ignore_empty_endline=True):
+    #string : printing data
+    #fspace : pre space(space before string, before first line)
+    #nspace : space for body area
+    #new_line: new_line symbol
+    #flength : first line ( head line ) print-string length
+    #nlength : body area print-string length
+    #mode    : space: white space to space area
+    #out     : output to string or list
+    #ntap    : not used (removed parameter)
+    #NFLT    : same as fspace=0
+    #ignore_empty_endline: True: if endline have no data then ignore making space for wrap.  False: making space to wrap for next attaching string
     if IsNone(string): return default
     if not Type(string,'str'):string='''{}'''.format(string)
     rc_str=[]
@@ -4519,8 +4544,11 @@ def WrapString(string,fspace=0,nspace=0,new_line='\n',flength=0,nlength=0,ntap=0
     if NFLT: fspace=0
     rc_str.append(Space(fspace,mode=mode)+Join(Cut(string_a[0],head_len=flength,body_len=nlength,new_line=new_line,out=list),'\n',append_front=Space(nspace,mode=mode)))
     #Body line design
-    for ii in string_a[1:]:
-        rc_str.append(Space(nspace,mode=mode)+Join(Cut(ii,head_len=nlength,new_line=new_line,out=list),'\n',append_front=Space(nspace,mode=mode)))
+    #for ii in string_a[1:]:
+    mx=len(string_a)-1
+    for ii in range(1,mx+1):
+        if ignore_empty_endline is True and ii == mx and not string_a[ii]: break
+        rc_str.append(Space(nspace,mode=mode)+Join(Cut(string_a[ii],head_len=nlength,new_line=new_line,out=list),'\n',append_front=Space(nspace,mode=mode)))
     #return new_line.join(rc_str)
     if out in [list,'list']: return rc_str
     elif out in [tuple,'tuple']: return tuple(rc_str)
@@ -5298,6 +5326,7 @@ def printf(*msg,**opts):
     end_newline=True/False       : mark new line at end of the line
     start_newline=False/True     : mark new line at start of the line
     intro=<str>                  : log intro string before log data
+    no_intro                     : True: temporary remove intro 
     log_level=<int>              : make log-level
         printf_log_base=6
         printf('aaaaa',log_level=3) -> this will print
@@ -5319,17 +5348,15 @@ def printf(*msg,**opts):
     global printf_caller_tree
     global printf_log_base
     global printf_caller_name
-    global printf_line_buff
+    global printf_newline_info
+    global printf_ignore_empty
+    global printf_scr_dbg
     direct=opts.get('direct',False)
     dsp=opts.get('dsp',opts.get('mode','a'))
     if not dsp: dsp='a'
     if dsp == 'i': return # ignore print
-    date_format=opts.get('date_format','%m/%d/%Y %H:%M:%S' if not direct and opts.get('date') else None)
     log=opts.get('log',None)
     log_level=opts.get('log_level',None)
-    #caller=opts.get('caller',opts.get('caller_detail',Variable(src='printf_caller_detail',mode='all',parent=1,default=None)))
-    #caller_tree=opts.get('caller_tree',opts.get('caller_history',Variable(src='printf_caller_tree',mode='all',parent=1,default=None)))
-    #printf_log_base=Variable('printf_log_base',parent=1,mode='all')
     parent_n=opts.get('caller_parent',1)
     caller_detail=opts.get('caller',opts.get('caller_detail',printf_caller_detail))
     caller_tree=opts.get('caller_tree',printf_caller_tree)
@@ -5341,18 +5368,32 @@ def printf(*msg,**opts):
     caller_args=opts.get('caller_args',False)
     caller_name=opts.get('caller_name',printf_caller_name)
     syslogd=opts.get('syslogd',None)
+    scr_dbg=opts.get('scr_dbg',printf_scr_dbg)
+    scr_dbg_condition=opts.get('scr_dbg_condition')
+    no_intro=opts.get('no_intro',False)
+    ignore_empty=opts.get('ignore_empty',printf_ignore_empty)
+    if no_intro or direct:
+        date_format=None
+    else:
+        date_format=opts.get('date_format','%m/%d/%Y %H:%M:%S' if opts.get('date') else None)
+    # end newline design
     new_line='' if direct else opts.get('new_line',opts.get('newline',opts.get('end',opts.get('end_newline',opts.get('post_newline','\n')))))
-    if new_line is True: new_line='\n'
-    elif new_line is False: new_line=''
-    start_newline='' if direct else opts.get('start_newline',opts.get('start',opts.get('pre_newline','')))
-    if start_newline is True: start_newline='\n'
-    elif start_newline is False: start_newline=''
-    #auto_fit=opts.get('auto_fit',False)
-    #form=opts.get('form')
+    if new_line not in ['','\n']:new_line='\n' if new_line and not direct else ''
+    # start newline design
+    no_start_newline=opts.get('no_start_newline')
+    start_newline='' if no_start_newline is True else opts.get('start_newline',opts.get('start',opts.get('pre_newline')))
+    if start_newline in ['A',True] and not no_start_newline:
+        start_newline='\n'
+#        if printf_newline_info.Get(dsp):
+#            start_newline='\n'
+#        else:
+#            start_newline=''
+    elif start_newline!='\n':
+        start_newline=''
     intro=opts.get('intro',None)
     logfile=opts.get('logfile',opts.get('log_file',[]))
     ignore_myself=opts.get('ignore_myself',True)
-
+    
     # save msg(removed log_file information) to syslogd 
     if syslogd:
         # Make a message to single line
@@ -5377,7 +5418,7 @@ def printf(*msg,**opts):
         else:
             syslog.syslog(tmp_str)
 
-    #Logfile
+    #Get Logfile information for OLD version
     if isinstance(logfile,str):
         logfile=logfile.split(',')
     elif isinstance(logfile,tuple):
@@ -5401,11 +5442,11 @@ def printf(*msg,**opts):
                     msg.remove(ii)
 
     # Make a Intro
+    intro_len=0
     intro_msg=''
-    if date_format and not syslogd:
-        intro_msg='{0} '.format(TIME().Now().strftime(date_format))
-    intro_len=len(intro_msg)
-    if not direct:
+    if not direct and not no_intro:
+        intro_msg='{0} '.format(TIME().Now().strftime(date_format)) if date_format and not syslogd else ''
+        intro_len=len(intro_msg)
         if caller_detail or caller_tree or caller_history or caller_ignore:
             if ignore_myself:
                 if not isinstance(caller_ignore,list): caller_ignore=[]
@@ -5451,54 +5492,85 @@ def printf(*msg,**opts):
                 # if not date_format then loggin's intro length will be stepping length
                 if isinstance(call_name,str): call_name=[call_name]
                 if caller_tree or caller_history: call_name=call_name+[''] if date_format else call_name+[' ']
-                intro_msg=intro_msg+WrapString(Join(call_name,'\n'),fspace=0, nspace=len(intro_msg),mode='space') + ': '
+                intro_msg=intro_msg+WrapString(Join(call_name,'\n'),fspace=0, nspace=len(intro_msg),mode='space',ignore_empty_endline=False) + ': '
                 intro_len=intro_len+len(call_name[-1])+2
         if Type(intro,'str') and intro:
             intro_msg=intro_msg+intro+': '
             intro_len=intro_len+len(intro)+2
-    # Make a msg
+
+    # Make input data to a string msg 
     msg_str=''
     for ii in msg:
         if not isinstance(ii,str):
-            msg_str=msg_str if msg_str else intro_msg + ColorStr(WrapString(Str(pprint.pformat(ii),default='org'),fspace=intro_len if msg_str else 0, nspace=intro_len,mode='space'),**opts)
+            if msg_str:
+                msg_str=msg_str + intro_msg + ColorStr(WrapString(Str(pprint.pformat(ii),default='org'),fspace=intro_len if msg_str else 0, nspace=intro_len,mode='space'),**opts)
+            else:
+                msg_str=intro_msg + ColorStr(WrapString(Str(pprint.pformat(ii),default='org'),fspace=intro_len if msg_str else 0, nspace=intro_len,mode='space'),**opts)
         else:
-            msg_str=msg_str if msg_str else intro_msg + ColorStr(WrapString(Str(ii,default='org'),fspace=intro_len if msg_str else 0, nspace=intro_len,mode='space'),**opts)
-    #if auto_fit is True and msg_str:
-    #    if not start_newline and new_line and not direct:
-    #        failed=Import('import blessed')
-    #        if not failed:
-    #            term=blessed.Terminal()
-    #            cur=term.get_location()
-    #            if isinstance(cur,tuple) and len(cur) == 2:
-    #                if cur[1] > 0:
-    #                    msg_str='\n'+msg_str
+            if msg_str:
+                msg_str=msg_str + intro_msg + ColorStr(WrapString(Str(ii,default='org'),fspace=intro_len if msg_str else 0, nspace=intro_len,mode='space'),**opts)
+            else:
+                if ii and ii[0] in ['\n','\r']: # Fix : losted first '\n' to recover
+                    msg_str=intro_msg + ii[0] + ColorStr(WrapString(Str(ii,default='org'),fspace=intro_len if msg_str else 0, nspace=intro_len,mode='space'),**opts)
+                else:
+                    msg_str=intro_msg + ColorStr(WrapString(Str(ii,default='org'),fspace=intro_len if msg_str else 0, nspace=intro_len,mode='space'),**opts)
 
-    tstart_newline='' if msg_str and msg_str[0] == '\n' and start_newline else start_newline
-    tnew_line='' if msg_str and msg_str[-1] == '\n' and new_line else new_line
+    # Reduce/remove duplicated(start_newline + msg_str[0]) newline to single newline
+    if start_newline:
+        if msg_str and msg_str[0] == '\n': msg_str=msg_str[1:]
+    if new_line:
+        if msg_str and msg_str[-1] == '\n': msg_str=msg_str[:-1]
+    ## if end of line have no newline, but it has intro then adding start_newline
+    #if intro_msg and not no_start_newline:
+    #    if printf_newline_info.Get(dsp): 
+    #        start_newline='\n'
+
+    #DBG MODE for printing
+    scr_dbg_print=False
+    if scr_dbg is True:
+        if scr_dbg_condition is None or msg_str == scr_dbg_condition:
+            scr_dbg_print=True
+            arg={'parent':'1-9','line_number':True,'filename':True,'args':False,'history':True,'tree':True}
+            call_name=FunctionName(**arg)
+            print('-------------FUNCTION--------------------')
+            print(Join(call_name,'\n'))
+            print('-----------------------------------------')
+            print('log                   :{} (function:{}:{})'.format(log,IsFunction(log),opts))
+            print('logfile               :{}'.format(logfile))
+            print('newline info          :{}'.format(printf_newline_info.data))
+            print('force no start newline:{}'.format(no_start_newline))
+            print('newline               :(direct:{},start:{},end:{})'.format(direct,True if start_newline else False,True if new_line else False))
+            print('ignore_empty          :{}'.format(ignore_empty))
+            print('message               :[{}]'.format(msg))
+            print('intro                 :[{}]'.format(intro_msg))
+            print('log level             :{} < {} (print:{})'.format(printf_log_base,log_level, printf_log_base < log_level if IsInt(printf_log_base) and IsInt(log_level) else True))
+            print('before mode print     :[{}]'.format(start_newline+msg_str+new_line))
     #When having Log function then give the data to log function
     log_p=False
-    #if Type(log,'function','method'):
-    if IsFunction(log):
+    if IsFunction(log): # Log function( debug mode log function too )
         try:
             #FeedFunc(log,start_newline+msg_str+new_line,**opts)
-            # Reduce duplicated newline
+            if not msg_str:
+                if caller_detail or caller_tree or caller_history or 'd' in dsp: #If no message then ignore
+                    msg_str=intro_msg + ColorStr(WrapString('[** EMPTY **]',fspace=intro_len, nspace=intro_len,mode='space'),**opts)
             if msg_str: #If no message then ignore
-                #Auto New line(auto_fit)
-                if not direct and log in printf_line_buff and not start_newline and msg_str[0]!='\n':
-                    FeedFunc(log,'\n',**opts)
-                if tstart_newline and log not in printf_line_buff:
-                    #Remove duplicated '\n' at last-end and current-fist
-                    FeedFunc(log,msg_str+tnew_line,**opts)
+                # if end of line have no newline, but it has intro then adding start_newline
+                if intro_msg and not no_start_newline:
+                    if printf_newline_info.Get(log): 
+                        start_newline='\n'
+                #if changed option then update the option
+                opts['start_newline']=start_newline
+                opts['new_line']=new_line
+                if scr_dbg_print:
+                    print('mode                  :{} (before no newline:{})'.format(log,True if printf_newline_info.Get(log) else False))
+                    print('updated start newline :{}'.format(True if start_newline else False))
+                    print('print                 :[{}]'.format(start_newline+msg_str+new_line))
+                    print('-----------------------------------------')
+                a=FeedFunc(log,start_newline+msg_str+new_line,**opts)
+                if new_line:
+                    printf_newline_info.Del(log)
                 else:
-                    FeedFunc(log,tstart_newline+msg_str+tnew_line,**opts)
-                    
-                #msg_str_log=msg_str if not direct and opts.get('start_newline') in [True,'\n',start_newline] else start_newline + msg_str
-                #msg_str_log=msg_str_log if not direct and opts.get('new_line',opts.get('newline',opts.get('end',opts.get('end_newline','\n')))) in [True,'\n',new_line] else msg_str_log+new_line
-                #FeedFunc(log,msg_str_log,**opts)
-                if new_line or msg_str[-1] == '\n':
-                    if log in printf_line_buff: printf_line_buff.remove(log)
-                else:
-                    if log not in printf_line_buff: printf_line_buff.append(log)
+                    printf_newline_info.Put(log,True)
                 log_p=True
         except:
             pass
@@ -5508,63 +5580,67 @@ def printf(*msg,**opts):
         if IsInt(printf_log_base) and IsInt(log_level):
             if printf_log_base < log_level:
                 return
-        # Save msg to file when defined logfile
-        #if ('f' in dsp or 'a' in dsp) and logfile:
-        if logfile and msg_str:
+        # if just whitespace then not newline, something else with data then what ever
+        # Save msg to logfile when defined logfile
+        if logfile:
             for ii in logfile:
                 if isinstance(ii,str) and ii:
                     ii_d=os.path.dirname(ii)
                     ii_d=ii_d if ii_d else '.' # If just filename then directory to .(current directory)
                     if ii and os.path.isdir(ii_d):
-                        log_p=True
+                        if not msg_str:
+                            if caller_detail or caller_tree or caller_history or not ignore_empty or 'd' in dsp:   # Ignore empty data on screen w/o debugging 
+                                msg_str=intro_msg + ColorStr(WrapString('[** EMPTY **]',fspace=intro_len, nspace=intro_len,mode='space'),**opts)
+                        if not msg_str: return
+
+                        # if end of line have no newline, but it has intro then adding start_newline
+                        if intro_msg and not no_start_newline:
+                            if printf_newline_info.Get(Bytes(ii)): 
+                                start_newline='\n'
+                        if scr_dbg_print:
+                            print('mode                  :{} (before no newline:{})'.format(ii,True if printf_newline_info.Get(Bytes(ii)) else False))
+                            print('updated start newline :{}'.format(True if start_newline else False))
+                            print('print                 :[{}]'.format(start_newline+msg_str+new_line))
+                            print('-----------------------------------------')
+                        log_p=True  # writing to log_file
                         with open(ii,'a+') as f:
-                            #Auto New line(auto_fit)
-                            if not direct and 'file' in printf_line_buff and not start_newline and msg_str[0]!='\n':
-                                f.write('\n')
-                            if tstart_newline and 'file' not in printf_line_buff:
-                                #Remove duplicated '\n' at last-end and current-fist
-                                f.write(msg_str+tnew_line)
-                            else:
-                                f.write(tstart_newline+msg_str+tnew_line)
-            #Auto New line
-            if new_line or msg_str[-1] == '\n':
-                if 'file' in printf_line_buff: printf_line_buff.remove('file')
-            else:
-                if 'file' not in printf_line_buff: printf_line_buff.append('file')
+                            f.write(start_newline+msg_str+new_line)
+                        if new_line:
+                            printf_newline_info.Del(Bytes(ii))
+                        else:
+                            printf_newline_info.Put(Bytes(ii),True)
+        if ignore_empty is True and not msg_str: return # Ignore empty data on screen
         # print msg to screen when did not done with logfile or log function
-        if msg_str:
-            if (log_p is False and 'a' in dsp) or 's' in dsp or 'e' in dsp:
-                 if 'e' in dsp:
-                     #Auto New line(auto_fit)
-                     if not direct and 'e' in printf_line_buff and not start_newline and msg_str[0]!='\n':
-                         StdErr('\n')
-                     if tstart_newline and 'e' not in printf_line_buff:
-                         #Remove duplicated '\n' at last-end and current-fist
-                         StdErr(msg_str+tnew_line)
-                     else:
-                         StdErr(tstart_newline+msg_str+tnew_line)
-                     if new_line or msg_str[-1] == '\n':
-                         if 'e' in printf_line_buff: printf_line_buff.remove('e')
-                     else:
-                         if 'e' not in printf_line_buff: printf_line_buff.append('e')
-                 elif 'c' in dsp: #Display to console (it also work with Robot Framework)
-                     print(start_newline+msg_str+new_line,end='',file=sys.__stdout__)
-                 else: # Print out on screen
-                     #Auto New line(auto_fit)
-                     if not direct and 's' in printf_line_buff and not start_newline and msg_str[0]!='\n':
-                         StdOut('\n')
-                     if tstart_newline and 's' not in printf_line_buff:
-                         #Remove duplicated '\n' at last-end and current-fist
-                         StdOut(msg_str+tnew_line)
-                     else:
-                         StdOut(tstart_newline+msg_str+tnew_line)
-                     if new_line or msg_str[-1] == '\n':
-                         if 's' in printf_line_buff: printf_line_buff.remove('s')
-                     else:
-                         if 's' not in printf_line_buff: printf_line_buff.append('s')
+        if (log_p is False and 'a' in dsp) or 's' in dsp or 'e' in dsp or 'c' in dsp:
+             if 'e' in dsp:
+                 # if end of line have no newline, but it has intro then adding start_newline
+                 if intro_msg and not no_start_newline:
+                     if printf_newline_info.Get('e'): 
+                         start_newline='\n'
+                 if scr_dbg_print:
+                     print('mode                  :{} (before no newline:{})'.format('e',True if printf_newline_info.Get('e') else False))
+                     print('updated start newline :{}'.format(True if start_newline else False))
+                     print('print                 :[{}]'.format(start_newline+msg_str+new_line))
+                     print('-----------------------------------------')
+                 StdErr(start_newline+msg_str+new_line)
+                 printf_newline_info.Put('e',False if new_line else True)
+             elif 'c' in dsp: #Display to console (it also work with Robot Framework)
+                 print(start_newline+msg_str+new_line,end='',file=sys.__stdout__)
+             else: # Print out on screen
+                 if intro_msg and not no_start_newline:
+                     if printf_newline_info.Get('a' if 'a' in dsp else 's'): 
+                         start_newline='\n'
+                 if scr_dbg_print:
+                     print('mode                  :{} (before no newline:{})'.format('a',True if printf_newline_info.Get('a' if 'a' in dsp else 's') else False))
+                     print('updated start newline :{}'.format(True if start_newline else False))
+                     print('print                 :[{}]'.format(start_newline+msg_str+new_line))
+                     print('-----------------------------------------')
+                 # if end of line have no newline, but it has intro then adding start_newline
+                 StdOut(start_newline+msg_str+new_line)
+                 printf_newline_info.Put('a' if 'a' in dsp else 's',False if new_line else True)
     # return msg when required return whatever condition
     if 'r' in dsp:
-         return msg_str
+        return msg_str
 
 def ColorStr(msg,**opts):
     color=opts.get('color',None)
@@ -6261,7 +6337,7 @@ def sizeof(obj):
         objects = gc.get_referents(*new)
     return msize
 
-def human_byte(num, unit="K", wunit=None):
+def human_byte(num, unit="K", wunit=None,int_out=False):
     units = ["B","K","M","G","T","P"]
     if wunit is None:
         unit=unit.upper()
@@ -6289,10 +6365,66 @@ def human_byte(num, unit="K", wunit=None):
             for i in range(sui,eui,-1):
                 num *= 1024.0
         unit=wunit
-    if unit == "B":
-        return "%.1f %s" % (num,unit)
+    if int_out:
+        return float("%.1f"%(num))
     else:
-        return "%.1f %sB" % (num,unit)
+        if unit == "B":
+            return "%.1f %s" % (num,unit)
+        else:
+            return "%.1f %sB" % (num,unit)
+
+def Human_Unit(num,unit='S',want_unit=None,int_out=False):
+    def convert_sec_to_format(num,want_format="%Y %m %d %H:%M:%S"):
+        return datetime.datetime.fromtimestamp(num).strftime(want_format)
+    def convert_int_time_to_yhms(num,unit='S',want=None):
+        c=[31536000,86400,3600,60,1] # yy,dd,hh,mm,ss
+        cu=['Y','D','H','M','S']     # yy,dd,hh,mm,ss
+        if isinstance(want,str) and want and want in cu:
+            start_i=cu.index(want)
+        else:
+            start_i=0
+        if isinstance(unit,str) and unit and unit in cu:
+            mx=cu.index(unit)
+        else:
+            mx=len(c)-1
+        if mx == len(c)-1: # sec -> want
+            o={}
+            for i in range(start_i,mx+1):
+                if (mx == i and num >= c[i]) or num > c[i]:
+                    o[cu[i]]=num//c[i]
+                    num=num%(c[i]*o[cu[i]])
+            return o
+        else:  # unit -> sec and calculate sec to want
+            num = num * c[mx] # convert to unit to seconds
+            return convert_int_time_to_yhms(num,unit='S',want=want)
+    if isinstance(unit,str) and unit and (want_unit is None or isinstance(want_unit,str)):
+        if unit.upper() in ['MM','MIN','Y','YY','YEAR','HH','H','HOUR','S','SEC','SS']:
+            mode='time'
+        else:
+            mode='byte'
+        num_unit=unit[0].upper()
+        #TIME
+        if num_unit == 'S' and (isinstance(want_unit,str) and want_unit and want_unit[0] == '%'):
+            if len(want_unit) == 1:
+                return convert_sec_to_format(num,want_format="%Y %m %d %H:%M:%S")
+            else:
+                return convert_sec_to_format(num,want_format=want_unit)
+        #TIME
+        elif (mode == 'time' and want_unit in ['Y','D','H','M','S',None]) or (num_unit in ['Y','D','H','M','S'] and want_unit in ['Y','D','H','M','S']):
+            oo=convert_int_time_to_yhms(num,unit=num_unit,want=want_unit)
+            if int_out and want_unit in oo:
+                return oo[want_unit]
+            else:
+                o=''
+                for i in ['Y','D','H','M','S']:
+                    if i in oo:
+                        if o: o=o+' {}{}'.format(oo[i],i)
+                        else: o='{}{}'.format(oo[i],i)
+                return o
+        #Byte
+        elif num_unit in ["B","K","M","G","T","P"] and want_unit in ["B","K","M","G","T","P",None]:
+            return human_byte(num, unit=num_unit, wunit=want_unit, int_out=int_out)
+    return 'Unknown Unit({} -> {})'.format(unit,want_unit)
 
 class FILE_W:
     '''
@@ -7041,6 +7173,28 @@ class TRY:
 
     def Error(self):
         return self.error
+
+class RETURN:
+    '''Temporary try to RETURN value define'''
+    def __init__(self,*data,**opts):
+        self.rc=opts.get('rc',opts.get('RC',None))
+        if len(data) == 1:
+            self.data=data[0]
+        else:
+            self.data=data
+        self.info={}
+        if opts.get('info',True) is True:
+            self.info['time']=TIME().Int()
+            if opts.get('function',True) is True:
+                self.info['function']=FunctionName(**{'parent':1,'args':True,'line_number':True,'filename':True})
+            if opts.get('parent') is True:
+                self.info['parent']=FunctionName(**{'parent':2,'line_number':True,'filename':True})
+            if 'msg' in opts: self.info['msg']=opts.get('msg')
+            if 'network' in opts: self.info['network']=opts.get('network')
+
+    def Get(self,*o,**opts):
+        if not o: opts['default']='org'
+        return Get(self.data,*o,**opts)
 
 
 #if __name__ == "__main__":
