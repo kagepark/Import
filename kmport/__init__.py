@@ -3488,8 +3488,6 @@ def ping(host,**opts):
               gTime.Init()
               if keep_bad:
                   if bTime.Out(keep_bad): break
-              else:
-                  break
           if log_format == 'ping':
               printf('{} icmp_seq={} timeout ({} second)'.format(rc[1],i,rc[3]),log=log,dsp=dspi)
           elif dspi in ['d','s']:
