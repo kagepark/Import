@@ -27,11 +27,12 @@ import pprint
 import pickle
 import inspect
 import getpass
+import datetime
 import platform
 import traceback
 import subprocess
 from threading import Thread
-from datetime import datetime
+#from datetime import datetime
 from importlib import import_module
 # If importing "from kmport import *" then
 # adding "global  printf_log_base",
@@ -3503,6 +3504,86 @@ def ping(host,**opts):
         if local_printed: printf('',log=log, dsp=dspi,ignore_empty=False)
     return good
 
+class PAGE:
+    '''
+    Web site page and URL design
+    '''
+    def __init__(self,request=None,data=None,base='',others=None,prange=25):
+        if request:
+            self.requests=request
+        else:
+            Import('import requests')
+            self.requests=requests
+        self.prange=prange
+        self.parameters=dict(self.requests.args)
+        page=self.requests.args.get('page',0)
+        if self.requests.method=='POST':
+            parameters=dict(self.requests.form)
+            self.parameters.update(parameters)
+            if 'page' in self.parameters: page=self.parameters.get('page')
+        try:
+            self.page=int(page)
+        except:
+            self.page=0
+        self.total=0
+        if isinstance(data,(list,dict,tuple)):
+            self.total=len(data)
+        self.total_page=self.total//self.prange
+        self.base=base
+        self.others=others
+        self.start=self.page*self.prange
+        self.end=self.start+self.prange
+    def url(self,base=None,ignore=None,**opts):
+        args=''
+        for i in self.parameters:
+            if isinstance(ignore,list) and i in ignore: continue
+            if i in opts:
+                oo=opts.pop(i)
+                args=args+'{}{}={}'.format('&' if args else '',i,oo)
+            else:
+                args=args+'{}{}={}'.format('&' if args else '',i,self.parameters[i])
+        for i in opts:
+            args=args+'{}{}={}'.format('&' if args else '',i,opts[i])
+        if isinstance(base,str) and base:
+            if base[-1] == '?':
+                return base+ args
+            else:
+                return base+'?' + args
+        else:
+            return self.base+'?' + args
+    def get(self,name=None):
+        if isinstance(self.parameters,dict):
+            if name and name in self.parameters:
+                return self.parameters[name]
+        if name and name in self.__dict__:
+            return self.__dict__[name]
+        self.parameters
+    def pages(self):
+        html_page=''
+        if self.page > 0 :
+            next_page=self.page-1
+            oo=self.url(ignore=['page'])
+            if oo: oo=oo+'&'
+            html_page='''{0}
+            <a href="{1}"> |< </a>
+            <a href="{2}page={3}"> << </a>'''.format(html_page,self.url(page=0),oo,next_page)
+        else:
+            html_page='''{0} |< << '''.format(html_page)
+        html_page='''{}[{}]'''.format(html_page,self.page)
+        if self.page < self.total_page:
+            next_page=self.page+1
+            oo=self.url(ignore=['page'])
+            if oo : oo=oo+'&'
+            html_page='''{0}
+            <a href="{1}page={2}"> >> </a>
+            <a href="{1}page={3}"> >| </a>
+           '''.format(html_page,oo,next_page,self.total_page)
+        else:
+            html_page='''{0}
+             >>  >|
+           '''.format(html_page)
+        return html_page
+
 class WEB:
     '''
     GetIP: get server or client IP
@@ -3511,10 +3592,10 @@ class WEB:
     form2dict: convert form data to dictionary format
     '''
     def __init__(self,request=None):
-        Import('import requests')
         if request:
             self.requests=request
         else:
+            Import('import requests')
             self.requests=requests
 
     def Session(self):
@@ -3668,13 +3749,26 @@ class WEB:
         if IsNone(src): src=self.requests.form
         return Dict(src)
 
+    def highlight(self,strings,find,color='#ffff42'):
+        if isinstance(strings,str):
+            ff=re.compile(find,re.I)
+            all_ff=ff.findall(strings)
+            if len(all_ff) >0:
+                for mm in all_ff:
+                    strings=strings.replace(mm,'''<font style="background-color:{1}">{0}</font>'''.format(mm,color))
+        return strings
+
+
 class TIME:
-    def __init__(self,src=None):
-        self.init_sec=int(datetime.now().strftime('%s'))
+    def __init__(self,src=None,timezone=None):
+        self.now=self.Now(timezone=timezone)
+        self.init_sec=int(self.now.strftime('%s'))
         self.src=src
 
-    def Reset(self):
-        self.init_sec=int(datetime.now().strftime('%s'))
+    def Reset(self,timezone=None):
+        self.now=self.Now(timezone=timezone)
+        self.init_sec=int(self.now.strftime('%s'))
+
     def Sleep(self,try_wait=None,default=1):
         if isinstance(try_wait,(int,str)): try_wait=(try_wait,)
         if isinstance(try_wait,(list,tuple)) and len(try_wait):
@@ -3705,12 +3799,37 @@ class TIME:
                     pass
         return default
 
-    def Int(self):
-        return int(datetime.now().strftime('%s'))
+    def Int(self,timezone=None):
+        self.Now(int,timezone=timezone)
+#        if isinstance(timezone,str) and timezone:
+#            Import('import pytz')
+#            try:
+#                timezone=pytz.timezone(timezone)
+#            except:
+#                printf('Unknown current timezone ({})'.format(timezone),mode='e')
+#                return False
+#            return int(self.Datetime().now(timezone).strftime('%s'))
+#        else:
+#            return int(self.Datetime().now().strftime('%s'))
 
-    def Now(self,mode=None):
-        if mode in [int,'int','INT','sec']:return self.Int()
-        return datetime.now()
+    def Now(self,mode=None,timezone=None,timedata=None):
+        if isinstance(timedata,self.Datetime()):
+            timedata=self.now
+        else:
+            if isinstance(timezone,str) and timezone:
+                Import('import pytz')
+                try:
+                    timezone=pytz.timezone(timezone)
+                except:
+                    printf('Unknown current timezone ({})'.format(timezone),mode='e')
+                    return False
+                timedata=self.Datetime().now(timezone)
+            else:
+                timedata=self.Datetime().now()
+        if mode in [int,'int','INT','sec']:
+            return int(timedata.strftime('%s'))
+        else:
+            return timedata
 
     def Out(self,timeout_sec,default=(24*3600)):
         try:
@@ -3725,14 +3844,13 @@ class TIME:
     def Format(self,tformat='%s',read_format='%S',time='_#_'):
         if IsNone(time,chk_val=['_#_'],chk_only=True): time=self.src
         if IsNone(time,chk_val=[None,'',0,'0']):
-            return datetime.now().strftime(tformat)
-
+            return self.Now().strftime(tformat)
         elif read_format == '%S':
             if isinstance(time,int) or (isinstance(time,str) and time.isdigit()):
-                return datetime.fromtimestamp(int(time)).strftime(tformat)
+                return self.Datetime().fromtimestamp(int(time)).strftime(tformat)
         elif isinstance(time,str):
-            return datetime.strptime(time,read_format).strftime(tformat)
-        elif type(time).__name__ == 'datetime':
+            return self.Datetime().strptime(time,read_format).strftime(tformat)
+        elif isinstance(time,self.Datetime()):
             return time.strftime(tformat)
 
     def Init(self):
@@ -3742,7 +3860,69 @@ class TIME:
         return time.time()
 
     def Datetime(self):
-        return datetime()
+        return datetime.datetime
+
+    def Print(self,timedata=None,time_format='%Y-%m-%d %H:%M:%S'):
+        if not timedata: timedata=self.now
+        if isinstance(timedata,self.Datetime()):
+            return timedata.strftime('%Y-%m-%d %H:%M:%S')
+        return ''
+
+    def ReadStr(self,timedata,time_format='%Y-%m-%d %H:%M:%S'):
+        if isinstance(timedata,str):
+            return self.Datetime().strptime(timedata,time_format)
+        return ''
+
+    def TimeZone(self,setzone=None,want=None,timedata=None):
+        '''set timezone at timedata or convert to want timezone'''
+        if not timedata: timedata=self.now
+        if isinstance(timedata,self.Datetime()):
+            Import('import pytz')
+            if isinstance(setzone,str) and setzone:
+                if setzone in ['local','localtime','localzone','localtimezone']:
+                    setzone=None # set to local timezone
+                elif setzone in ['utc','UTC']:
+                    setzone=pytz.utc  # set to UTC timezone
+                else:
+                    try:
+                        setzone=pytz.timezone(setzone) # set to setzone
+                    except:
+                        printf('Unknown current timezone ({})'.format(setzone),mode='e')
+                        return False
+            if setzone != timedata.tzinfo: # if different timezone between source time and setzone
+                timedata=timedata.replace(tzinfo=setzone) # set to setzone
+            if isinstance(want,str) and want:
+                if want in ['local','localtime','localzone','localtimezone']:
+                    want=None # convert to local timezone
+                elif want in ['utc','UTC']:
+                    want=pytz.utc # convert  to utc timezone
+                else:
+                    try:
+                        want=pytz.timezone(want) # convert to want timezone
+                    except:
+                        printf('Unknown current timezone ({})'.format(want),mode='e')
+                        return False
+                if setzone != want: # if different timezone between source time and want zone
+                    localtime=timedata.astimezone(tz=want)
+                    return localtime
+            return timedata
+        return False
+
+    def TimeZoneName(self,timedata=None):
+        if not timedata: timedata=self.now
+        if isinstance(timedata,self.Datetime()):
+            tzname=timedata.tzname()
+            return tzname if tzname else timedata.astimezone().tzname()
+
+    def Utc2Local(self,time_format='%Y-%m-%d %H:%M:%S',mode='str',timedata=None):
+        if isinstance(timedata,str):
+            timedata=self.ReadStr(timedata,time_format=time_format)
+        elif timedata is None:
+            timedata=self.now
+        if isinstance(timedata,self.Datetime()):
+            timedata=self.TimeZone(setzone='UTC',want='local',timedata=timedata)
+            return self.Print(timedata=timedata) if mode=='str' else timedata
+        return False
 
 def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin/bash',path=None,progress=False,progress_pre_new_line=False,progress_post_new_line=True,log=None,env={},full_path=None,remove_path=None,remove_all_path=None,default_timeout=3600,env_out=False,cd=False,keep_cwd=False,decode=None):
     '''
