@@ -3800,7 +3800,7 @@ class TIME:
         return default
 
     def Int(self,timezone=None):
-        self.Now(int,timezone=timezone)
+        return self.Now(int,timezone=timezone)
 #        if isinstance(timezone,str) and timezone:
 #            Import('import pytz')
 #            try:
