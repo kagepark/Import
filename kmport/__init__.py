@@ -626,12 +626,13 @@ def Int(i,default='org',sym=None,err=False):
         if sym:
             sym=Bytes(sym) if i_type == 'bytes' else Str(sym)
             i=i.split(sym)
+            i_type=TypeName(i)
         else:
             try:
                 return int(i)
             except:
                 return Default(i,default)
-    elif i_type in ('list','tuple'):
+    if i_type in ('list','tuple'):
         tuple_out=True if i_type == 'tuple' else False
         rt=[]
         for a in i:
@@ -639,9 +640,9 @@ def Int(i,default='org',sym=None,err=False):
                rt.append(int(a))
            except:
                if err: return Default(i,default)
-               rt.append(a)
-        if tuple_out: return tuple(rt)
-        return rt
+               #rt.append(a)
+               rt.append(Default(a,default))
+        return tuple(rt) if tuple_out else rt
     return Default(i,default)
 
 def Join(*inps,symbol='_-_',byte=None,ignore_type=(dict,bool,None),ignore_data=(),append_front='',append_end='',default=None,err=False):
