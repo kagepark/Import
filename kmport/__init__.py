@@ -6283,7 +6283,7 @@ def Append(*a,symbol='',at=-1,want=None): # Append data according to source type
         return s
     return False
 
-def packet_receive_all(sock,count,progress=False,progress_msg=None,log=None,retry=0,retry_timeout=5,err_scr=True): # Packet
+def packet_receive_all(sock,count,progress=False,progress_msg=None,log=None,retry=0,retry_timeout=5,err_scr=False): # Packet
     if type(sock).__name__ not in ['socket','_socketobject','SSLSocket']:
         return False,'Is not network socket'
     buf = b''
