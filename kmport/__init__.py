@@ -3762,13 +3762,27 @@ class WEB:
 
 class TIME:
     def __init__(self,src=None,timezone=None):
-        self.now=self.Now(timezone=timezone)
-        self.init_sec=int(self.now.strftime('%s'))
+        self.timezone=timezone
+        self.init_time=self.Now()
+        self.life_time=self.init_time
+        self.init_sec=int(self.init_time.strftime('%s'))
         self.src=src
 
+    def Spend(self,life_time=True,unit=None,integer=True):
+        if life_time:
+            rt=int(self.Now().strftime('%s')) - int(self.life_time.strftime('%s'))
+        else:
+            rt=int(self.Now().strftime('%s')) - self.init_sec
+        # Convert integer value to human readable time
+        # unit: None , integer: output : seconds (int)
+        # Unit: None , not integer: output : Human readable passed time string (automatically calculate)
+        # Unit: unit , integer: output : the unit's number (int)
+        # Unit: unit , not integer: output : Human readable passed time string (max is defined unit)
+        return Human_Unit(rt,unit='S',want_unit=unit,int_out=integer)
+
     def Reset(self,timezone=None):
-        self.now=self.Now(timezone=timezone)
-        self.init_sec=int(self.now.strftime('%s'))
+        self.init_time=self.Now(timezone=timezone)
+        self.init_sec=int(self.init_time.strftime('%s'))
 
     def Sleep(self,try_wait=None,default=1):
         if isinstance(try_wait,(int,str)): try_wait=(try_wait,)
@@ -3802,21 +3816,12 @@ class TIME:
 
     def Int(self,timezone=None):
         return self.Now(int,timezone=timezone)
-#        if isinstance(timezone,str) and timezone:
-#            Import('import pytz')
-#            try:
-#                timezone=pytz.timezone(timezone)
-#            except:
-#                printf('Unknown current timezone ({})'.format(timezone),mode='e')
-#                return False
-#            return int(self.Datetime().now(timezone).strftime('%s'))
-#        else:
-#            return int(self.Datetime().now().strftime('%s'))
 
     def Now(self,mode=None,timezone=None,timedata=None):
         if isinstance(timedata,self.Datetime()):
-            timedata=self.now
+            timedata=self.init_time
         else:
+            if timezone is None: timezone=self.timezone
             if isinstance(timezone,str) and timezone:
                 Import('import pytz')
                 try:
@@ -3864,7 +3869,7 @@ class TIME:
         return datetime.datetime
 
     def Print(self,timedata=None,time_format='%Y-%m-%d %H:%M:%S'):
-        if not timedata: timedata=self.now
+        if not timedata: timedata=self.init_time
         if isinstance(timedata,self.Datetime()):
             return timedata.strftime('%Y-%m-%d %H:%M:%S')
         return ''
@@ -3876,7 +3881,7 @@ class TIME:
 
     def TimeZone(self,setzone=None,want=None,timedata=None):
         '''set timezone at timedata or convert to want timezone'''
-        if not timedata: timedata=self.now
+        if not timedata: timedata=self.init_time
         if isinstance(timedata,self.Datetime()):
             Import('import pytz')
             if isinstance(setzone,str) and setzone:
@@ -3910,7 +3915,7 @@ class TIME:
         return False
 
     def TimeZoneName(self,timedata=None):
-        if not timedata: timedata=self.now
+        if not timedata: timedata=self.init_time
         if isinstance(timedata,self.Datetime()):
             tzname=timedata.tzname()
             return tzname if tzname else timedata.astimezone().tzname()
@@ -3919,7 +3924,7 @@ class TIME:
         if isinstance(timedata,str):
             timedata=self.ReadStr(timedata,time_format=time_format)
         elif timedata is None:
-            timedata=self.now
+            timedata=self.init_time
         if isinstance(timedata,self.Datetime()):
             timedata=self.TimeZone(setzone='UTC',want='local',timedata=timedata)
             return self.Print(timedata=timedata) if mode=='str' else timedata
@@ -6579,6 +6584,13 @@ def Human_Unit(num,unit='S',want_unit=None,int_out=False):
     if isinstance(unit,str) and unit and (want_unit is None or isinstance(want_unit,str)):
         if unit.upper() in ['MM','MIN','Y','YY','YEAR','HH','H','HOUR','S','SEC','SS']:
             mode='time'
+            if isinstance(want_unit,str):
+                up_want_unit=want_unit.upper()
+                if up_want_unit in ['HOUR','HH','HOURS','H']: want_unit='H'
+                elif up_want_unit in ['MIN','MM','MINUTE','MINUTES','M']: want_unit='M'
+                elif up_want_unit in ['DAY','DD','DAYS','D']: want_unit='D'
+                elif up_want_unit in ['YEAR','YY','YEARS','Y']: want_unit='Y'
+                elif up_want_unit in ['SEC','SS','SECOND','SECONDS','S']: want_unit='S'
         else:
             mode='byte'
         num_unit=unit[0].upper()
@@ -6591,8 +6603,11 @@ def Human_Unit(num,unit='S',want_unit=None,int_out=False):
         #TIME
         elif (mode == 'time' and want_unit in ['Y','D','H','M','S',None]) or (num_unit in ['Y','D','H','M','S'] and want_unit in ['Y','D','H','M','S']):
             oo=convert_int_time_to_yhms(num,unit=num_unit,want=want_unit)
-            if int_out and want_unit in oo:
-                return oo[want_unit]
+            if int_out:
+                if want_unit:# and want_unit in oo:
+                    return oo.get(want_unit,0)
+                else: # if want unit is None then return num
+                    return num
             else:
                 o=''
                 for i in ['Y','D','H','M','S']:
