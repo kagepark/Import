@@ -21,6 +21,7 @@ import fcntl
 import random
 import shutil
 import codecs
+import ctypes
 import socket
 import struct
 import pprint
@@ -6212,7 +6213,7 @@ def Pop(src,key,default=None):
     if not IsNone(default):
         return default
 
-def IsTrue(condition,requirements=None,**opts):
+def IsTrue(condition,requirements=None,shell=False,**opts):
     condition_type=type(condition).__name__
     if IsFunction(condition,builtin=False):
         opts['parent']=3 if 'parent' not in opts else opts['parent']+2
@@ -6228,6 +6229,13 @@ def IsTrue(condition,requirements=None,**opts):
                 if condition == requirements : return True
     elif condition_type == 'bool':
         return condition
+    elif condition_type == 'int':
+        if shell:
+            if condition==0: return True
+            return False
+        else:
+            if condition>0: return True
+            return False
     return False
 
 def Append(*a,symbol='',at=-1,want=None): # Append data according to source type
@@ -7389,6 +7397,75 @@ class RETURN:
     def Get(self,*o,**opts):
         if not o: opts['default']='org'
         return Get(self.data,*o,**opts)
+
+class kThread(Thread):
+    '''
+    t = kThread(target=foo, args=('world!',)) # define
+    t.start() # start
+    print(t.get())  # get result
+    '''
+    def __init__(self, group=None, target=None, name=None,
+            args=(), kwargs={}, Verbose=None, default=None):
+        if PyVer(3):
+            Thread.__init__(self, group, target, name, args, kwargs)
+        else:
+            Thread.__init__(self, group, target, name, args, kwargs, Verbose)
+        self._return = default
+
+    def run(self):
+        if PyVer(3):
+            if self._target is not None:
+                self._return = self._target(*self._args,**self._kwargs)
+        else:
+            if self._Thread__target is not None:
+                self._return = self._Thread__target(*self._Thread__args,
+                                                **self._Thread__kwargs)
+    def get(self):
+        if self._tstate_lock:
+            Thread.join(self)
+            return self._return
+        return None
+
+    def stop(self,retry_num=10):
+        def _async_raise(th_id,exe_type):
+            th_id=ctypes.c_long(th_id)
+            if not inspect.isclass(exe_type):
+                exe_type=type(exe_type)
+            res = ctypes.pythonapi.PyThreadState_SetAsyncExc(th_id, ctypes.py_object(exe_type))
+            if res == 0:
+                #print("Invalid thread id({})".format(th_id))
+                return -1
+            elif res != 1:
+                ctypes.pythonapi.PyThreadState_SetAsyncExc(th_id, None)
+                raise SystemError("ThreadStop failed")
+            # stopped thread
+            return 0
+        for i in range(retry_num):
+            exit_id=_async_raise(self.ident, SystemExit)
+            if exit_id == 0:
+                self._is_stopped=True
+                return True # stopped
+            elif exit_id == -1: #No thread
+                self._is_stopped=True
+                return None
+        return False # stop Fail
+
+    def isAlive(self):
+        #if not self._tstate_lock and not self._is_stopped: return None # Not started
+        if not self._tstate_lock and not self._ident: return None # Not started
+        if not self._tstate_lock or self._is_stopped: return False #Stopped
+        return True #Running
+
+    def Name(self):
+        return self._name
+    def Args(self):
+        return self._args,self._kwargs
+    def Id(self):
+        if isinstance(self.ident,int):
+            return self.ident
+        return None # not started
+    def PPID(self):
+        return os.getpid()
 
 
 #if __name__ == "__main__":
