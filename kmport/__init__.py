@@ -630,7 +630,7 @@ def Int(i,default='org',sym=None,err=False):
             i_type=TypeName(i)
         else:
             try:
-                return int(i)
+                return int(float(i))
             except:
                 return Default(i,default)
     if i_type in ('list','tuple'):
@@ -638,7 +638,7 @@ def Int(i,default='org',sym=None,err=False):
         rt=[]
         for a in i:
            try:
-               rt.append(int(a))
+               rt.append(int(float(a)))
            except:
                if err: return Default(i,default)
                #rt.append(a)
