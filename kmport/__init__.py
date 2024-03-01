@@ -381,7 +381,7 @@ class STR(str):
                 src=Bytes(src)
             else:
                 src=Str(src)
-        src_a=Split(src,newline,default=False)
+        src_a=Split(src,newline,default=False,listonly=False)
         if src_a is False:
             return src
         if mode in ['edge','both']:
@@ -2769,7 +2769,7 @@ def Uniq(src,default='org',sort=False,strip=False,cstrip=False):
         return tuple(rt) if isinstance(src,tuple) else rt
     return Default(src,default)
 
-def Split(src,symbol=None,default=None,sym_spliter='|',listonly=False):
+def Split(src,symbol=None,default=[],sym_spliter='|',listonly=True):
     '''
     multipul split then 'a|b|...'
     without "|" then same as string split function
@@ -2806,6 +2806,8 @@ def Split(src,symbol=None,default=None,sym_spliter='|',listonly=False):
             return [src]
         return src
     if listonly:
+        if default == []:
+            return []
         return [default]
     return default
 
@@ -3475,7 +3477,7 @@ def ping(host,**opts):
        if rc[0] == 0:
           good=True
           if not count:
-              bTime.Init()
+              bTime.Reset()
               if keep_good:
                   if gTime.Out(keep_good): break
               else:
@@ -3488,7 +3490,7 @@ def ping(host,**opts):
        else:
           good=False
           if not count:
-              gTime.Init()
+              gTime.Reset()
               if keep_bad:
                   if bTime.Out(keep_bad): break
           if log_format == 'ping':
@@ -3764,7 +3766,7 @@ class WEB:
 class TIME:
     def __init__(self,src=None,timezone=None):
         self.timezone=timezone
-        self.init_time=self.Now()
+        self.init_time=self.Now(timezone=timezone)
         self.life_time=self.init_time
         self.init_sec=int(self.init_time.strftime('%s'))
         self.src=src
@@ -3839,10 +3841,7 @@ class TIME:
             return timedata
 
     def Out(self,timeout_sec,default=(24*3600)):
-        try:
-            timeout_sec=int(timeout_sec)
-        except:
-            timeout_sec=default
+        timeout_sec=Int(timeout_sec,default)
         if timeout_sec == 0:
             return False
         if self.Int() - self.init_sec >  timeout_sec:
@@ -4954,7 +4953,7 @@ class LIST(list):
                     pp=pp.strip()
                     symbol=' '
                 if path: symbol='/'
-                for rp in Split(pp,symbol,default=[]):
+                for rp in Split(pp,symbol):
                     if rp == default: continue
                     if uniq and rp in self: continue
                     if path:
@@ -4977,7 +4976,7 @@ class LIST(list):
         for pp in self + list(inps):
             if Type(pp,('bytes','str')):
                 if symbol or path:
-                    for rp in Split(pp.strip() if symbol == ':white_space:' else pp,' ' if symbol==':white_space:' else symbol,default=[]):
+                    for rp in Split(Strip(pp) if symbol == ':white_space:' else pp,' ' if symbol==':white_space:' else symbol):
                         if rp not in rt and rp != default:
                             if path:
                                 if rp == '.': continue
@@ -6423,7 +6422,7 @@ def RemoveNewline(src,mode='edge',newline='\n',byte=None):
             src=Bytes(src)
         else:
             src=Str(src)
-    src_a=Split(src,newline,default=False)
+    src_a=Split(src,newline,default=False,listonly=False)
     if src_a is False:
         return src
     if mode in ['edge','both']:
