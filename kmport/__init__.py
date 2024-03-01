@@ -1392,11 +1392,11 @@ def Bool(src,want=True,auto_bool=False,shell_code=True):
     return False
 
 def PyDefine(aa):
-    if aa in [None,"'None'",'"None"','None']:
+    if IsIn(aa,[None,"'None'",'"None"','None','null',"'null'",'"null"']):
         return None
-    elif aa in [True,"'True'",'"True"','True']:
+    elif IsIn(aa,[True,"'True'",'"True"','True','ok']):
         return True
-    elif aa in [False,"'False'",'"False"','False']:
+    elif IsIn(aa,[False,"'False'",'"False"','False','fail']):
         return False
     return aa
 
@@ -1544,7 +1544,7 @@ def IsInt(src,mode='all'):
             return _int_(src)
     return False
 
-def _max_(obj,idx,err=True):
+def _obj_max_idx_(obj,idx,err=True):
     #Get Object's max length
     obj_len=len(obj)
     if obj_len == 0: return None
@@ -1562,6 +1562,63 @@ def _max_(obj,idx,err=True):
             if err is True: return False
             return 0
         return obj_len+idx
+
+def Max(obj,key=False,err=True):
+    #ToDo:
+    # - list,tuple:
+    #    - key : True : Max of idx
+    #    - key : False: get maximum number or last string
+    #    - key : version: last version
+    # - dict :
+    #    - key : True : Max in keys
+    #    - key : False: Max in values
+    #    - key : None or dict: last input dict
+    #print('>>',obj)
+    if isinstance(obj,(list,tuple)):
+        if key is True:
+            return _obj_max_idx_(obj,err=err)
+        elif IsIn(key,['ver','version']):
+            a='0.0'
+            for i in obj:
+                if CompVersion(i,'>',a):
+                    a=i
+            if a=='0.0':
+                if err:
+                    return False
+            return a
+        elif key is False:
+            a=-1 #number
+            b=[] #string
+            for i in obj:
+                i=Int(i)
+                #print('>>i:',i)
+                if isinstance(i,int):
+                    if a < i:
+                        a=i
+                elif isinstance(i,str):
+                    b.append(i)
+            #print('>>b:',b)
+            if a > -1:
+                return a
+            elif b:
+                b.sort()
+                return b[-1]
+            else:
+                if err:
+                    return False
+                return obj[-1]
+    elif isinstance(obj,dict):
+        if key is True:
+            return Max(list(obj.keys()),err=err)
+        elif key is False:
+            return Max(list(obj.values()),err=err)
+        else:
+            return Max(list(obj.items()),err=False)
+    else:
+        if err:
+            return False
+        else:
+            return obj
 
 class DICT(dict):
     def __init__(self, *inps,**opts):
@@ -1649,15 +1706,15 @@ class DICT(dict):
         if ok is True:
             obj_items=list(self.items())
             if idx_type == 'tuple': #Range Index
-                ss=_max_(obj_items,Int(nidx[0]),err)
-                ee=_max_(obj_items,Int(nidx[1]),err)
+                ss=_obj_max_idx_(obj_items,Int(nidx[0]),err)
+                ee=_obj_max_idx_(obj_items,Int(nidx[1]),err)
                 if Type(ss,int) and Type(ee,int):
                     return DICT(dict(obj_items[ss:ee+1]))
             elif idx_type == 'list': #OR Index
                 rt=[]
                 for i in nidx:
                     if idx_only:
-                        ix=_max_(obj_items,Int(i,default=False,err=True),err)
+                        ix=_obj_max_idx_(obj_items,Int(i,default=False,err=True),err)
                         if Type(ix,int):
                             rt.append(obj_items[ix])
                         elif fill_up != '_fAlsE_':
@@ -1668,7 +1725,7 @@ class DICT(dict):
                 return OutFormat(rt,out=out,default=default,org=self,peel=peel,strip=strip)
             else:
                 if idx_only:
-                    ix=_max_(obj_items,Int(idx),err)
+                    ix=_obj_max_idx_(obj_items,Int(idx),err)
                     if Type(ix,int):
                         return DICT(dict((obj_items[ix],)))
                 return self.get(idx,Default(self,default))
@@ -2989,21 +3046,21 @@ def Get(*inps,**opts):
         
     if ok and obj_type in ('list','tuple','str','bytes'):
         if idx_type == 'tuple':
-            ss=_max_(obj,Int(nidx[0]),err)
-            ee=_max_(obj,Int(nidx[1]),err)
+            ss=_obj_max_idx_(obj,Int(nidx[0]),err)
+            ee=_obj_max_idx_(obj,Int(nidx[1]),err)
             if Type(ss,int) and Type(ee,int):
                 return obj[ss:ee+1]
         elif idx_type == 'list':
             rt=[]
             for i in nidx:
-                ix=_max_(obj,Int(i,default=False,err=True),err)
+                ix=_obj_max_idx_(obj,Int(i,default=False,err=True),err)
                 if Type(ix,int):
                     rt.append(obj[ix])
                 elif fill_up != '_fAlsE_':
                     rt.append(fill_up)
             return OutFormat(rt,out=out,default=default,org=obj,peel=peel,strip=strip)
         elif idx_type == 'int':
-            ix=_max_(obj,nidx,err)
+            ix=_obj_max_idx_(obj,nidx,err)
             if Type(ix,int): return obj[ix]
         if idx in dir(obj):
             return obj.__dict__.get(idx)
