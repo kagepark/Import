@@ -3288,7 +3288,11 @@ def IpV4(ip,out='str',default=False,port=None,bmc=False,used=False,pool=None,sup
             )[20:24])
         except:
             try:
-                return os.popen('ip addr show {}'.format(ip)).read().split("inet ")[1].split("/")[0]
+                dev_info=os.popen('ip addr show {}'.format(ip))
+                if dev_info:
+                    found_ip=dev_info.read().split("inet ")[1].split("/")[0]
+                    dev_info.close()
+                    return found_ip
             except:
                 return default
         return socket.gethostbyname(socket.gethostname())
@@ -5208,6 +5212,10 @@ class LIST(list):
         except:
             print('Not support mixed string and int')
 
+def Iterable(inp,default=[]):
+    if isinstance(inp,(list,tuple,dict)):
+        return inp
+    return default
 
 def List(*inps,**opts):
     '''
@@ -5220,6 +5228,7 @@ def List(*inps,**opts):
      path  : convert <dict> to path like list ([('/a/b',1),('/a/c',2),...])
      (default): <dict>.keys()
     <option>
+     ignores=[]   : ignore group(default: made to list, all)
      idx=<int>    : get <idx> data
      del=<int>    : delete <idx>
      first=<data> : move <data> to first
@@ -5245,6 +5254,11 @@ def List(*inps,**opts):
 
     tuple2list=opts.get('tuple2list',True)
     mode=opts.get('mode','auto')
+    ignores=opts.get('ignores')
+    if isinstance(ignores,str):
+        ignores=tuple(ignores.split(','))
+    if isinstance(ignores,(list,tuple)):
+        ignores=tuple(ignores)
     rt=[]
     if len(inps) == 0 : return rt
     if Type(inps[0],('list','LIST')):
@@ -5271,7 +5285,10 @@ def List(*inps,**opts):
         else:
             rt=list(inps[0])
     else:
-        rt=[inps[0]]
+        if isinstance(ignores,tuple) and (Type(inps[0],ignores) or IsIn(inps[0],ignores)):
+            pass
+        else:
+            rt=[inps[0]]
     for i in inps[1:]:
         if Type(i,list):
             rt=rt+i
@@ -5282,6 +5299,9 @@ def List(*inps,**opts):
                     continue
             elif Type(i,dict):
                 rt=rt+List(rt,i,**opts)
+                continue
+            print('>>',i,':',ignores,isinstance(ignores,tuple),Type(i,ignores),IsIn(i,ignores))
+            if isinstance(ignores,tuple) and (Type(i,ignores) or IsIn(i,ignores)):
                 continue
             rt.append(i)
     if opts.get('strip'):
@@ -6748,8 +6768,10 @@ class FILE_W:
     def FileType(self,filename,default=False):
         if not isinstance(filename,str) or not os.path.isfile(filename): return default
         Import('import magic')
-        aa=magic.from_buffer(open(filename,'rb').read(2048))
-        if aa: return aa.split()[0].lower()
+        f=open(filename,'rb')
+        aa=magic.from_buffer(f.read(2048))
+        f.close()
+        if isinstance(aa,str): return aa.split()[0].lower()
         return 'unknown'
 
     def FileInfo(self,filename,roots=None,_type=None,exist=None):
