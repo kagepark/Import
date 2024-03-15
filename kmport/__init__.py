@@ -1255,17 +1255,9 @@ def IsSame(src,dest,sense=False,order=False,_type_=False,digitstring=True,white_
        white_space          : True: keep white space, False:(default) ignore white_space
        digitstring          : True:(default) string and intiger is same, False: different
     '''
-#    src_type=TypeName(src)
-#    dest_type=TypeName(dest)
     if _type_ is True: # If check type only
         return Type(src,dest)
-#        if src_type == 'unknown' and dest_type == 'unknown':
-#            return type(src) == type(dest)
-#        return src_type == dest_type
-#    if src_type in ['str','bytes'] and dest_type in ['str','bytes']:# and dest:
     if Type(src,('str','bytes')) and Type(dest,('str','bytes')):# and dest:
-#        tobyte=True if dest_type == 'bytes' or src_type == 'bytes' else False
-#        if tobyte:
         if Type(dest,'bytes') or Type(src,'bytes'):
             src=Bytes(src)
             dest=Bytes(dest)
@@ -1273,8 +1265,6 @@ def IsSame(src,dest,sense=False,order=False,_type_=False,digitstring=True,white_
             if dest:
                 if dest[0] != b'^': dest=b'^'+dest
                 if dest[-1] != b'$': dest=dest+b'$'
-#            src_type='bytes'
-#            dest_type='bytes'
         else:
             src=Str(src)
             dest=Str(dest)
@@ -1282,8 +1272,6 @@ def IsSame(src,dest,sense=False,order=False,_type_=False,digitstring=True,white_
             if dest:
                 if dest[0] != '^': dest='^'+dest
                 if dest[-1] != '$': dest=dest+'$'
-#            src_type='str'
-#            dest_type='str'
     if isinstance(src,(list,tuple)) and isinstance(dest,(list,tuple)):
         if sense and order: return src == dest
         if len(src) != len(dest): return False
@@ -5587,7 +5575,7 @@ def printf(*msg,**opts):
     end_newline=True/False       : mark new line at end of the line
     start_newline=False/True     : mark new line at start of the line
     intro=<str>                  : log intro string before log data
-    no_intro                     : True: temporary remove intro 
+    no_intro                     : True: temporary remove intro , False(default): Intro when exist intro, None: space instead intro string
     log_level=<int>              : make log-level
         printf_log_base=6
         printf('aaaaa',log_level=3) -> this will print
@@ -5633,7 +5621,9 @@ def printf(*msg,**opts):
     scr_dbg_condition=opts.get('scr_dbg_condition')
     no_intro=opts.get('no_intro',False)
     ignore_empty=opts.get('ignore_empty',printf_ignore_empty)
-    if no_intro or direct:
+    msg_split=opts.get('msg_split',' ')
+    msg=list(msg)
+    if no_intro is False or direct:
         date_format=None
     else:
         date_format=opts.get('date_format','%m/%d/%Y %H:%M:%S' if opts.get('date') else None)
@@ -5643,43 +5633,65 @@ def printf(*msg,**opts):
     # start newline design
     no_start_newline=opts.get('no_start_newline')
     start_newline='' if no_start_newline is True else opts.get('start_newline',opts.get('start',opts.get('pre_newline')))
-    if start_newline in ['A',True] and not no_start_newline:
-        start_newline='\n'
-#        if printf_newline_info.Get(dsp):
-#            start_newline='\n'
-#        else:
-#            start_newline=''
-    elif start_newline!='\n':
+    if no_start_newline:
         start_newline=''
+    else:
+        if start_newline is True:
+            start_newline='\n'
+        elif IsIn(start_newline,['A','Auto']):
+            start_newline='auto'
+        else:
+            start_newline=''
+
+    if no_intro is True: # if no_intro then ignore start_newline mark
+        start_newline=''
+
     intro=opts.get('intro',None)
     logfile=opts.get('logfile',opts.get('log_file',[]))
     ignore_myself=opts.get('ignore_myself',True)
-    
-    # save msg(removed log_file information) to syslogd 
-    if syslogd:
-        # Make a message to single line
-        tmp_str=''
+    def msg_maker(*msg,msg_split=' ',intro_len=0,intro_msg=''):
+        # Make input data to a string msg 
+        msg_str=''
+        TT=0  # For '\n' or '\n\n' ...
         for ii in msg:
             if not isinstance(ii,str):
-                tmp_str=tmp_str if tmp_str else ColorStr(Str(pprint.pformat(ii),default='org'),**opts)
+                if intro_len:
+                    a=ColorStr(WrapString(Str(pprint.pformat(ii),default='org'),fspace=0 if not msg_str or msg_split != '\n' or TT else intro_len, nspace=intro_len,mode='space'),**opts)
+                else:
+                    a=ColorStr(Str(pprint.pformat(ii),default='org'),**opts)
             else:
-                tmp_str=tmp_str if tmp_str else ColorStr(Str(ii,default='org'),**opts)
-        if syslogd in ['INFO','info']:
-            syslog.syslog(syslog.LOG_INFO,tmp_str)
-        elif syslogd in ['KERN','kern']:
-            syslog.syslog(syslog.LOG_KERN,tmp_str)
-        elif syslogd in ['ERR','err']:
-            syslog.syslog(syslog.LOG_ERR,tmp_str)
-        elif syslogd in ['CRIT','crit']:
-            syslog.syslog(syslog.LOG_CRIT,tmp_str)
-        elif syslogd in ['WARN','warn']:
-            syslog.syslog(syslog.LOG_WARNING,tmp_str)
-        elif syslogd in ['DBG','DEBUG','dbg','debug']:
-            syslog.syslog(syslog.LOG_DEBUG,tmp_str)
-        else:
-            syslog.syslog(tmp_str)
+                if '\n' in ii and not ii.replace('\n',''): #convert \n or \n\n .... to wrapping format
+                    TT+=1
+                    ii=ii+'T'
+                if intro_len:
+                    a=ColorStr(WrapString(Str(ii,default='org'),fspace=0 if not msg_str or msg_split != '\n' or TT else intro_len, nspace=intro_len,mode='space'),**opts)
+                else:
+                    a=ColorStr(Str(ii,default='org'),**opts)
+                #Recover added T for wrapping format to original
+                if TT and '\n' in ii and ii.replace('\n','') == 'T': a=a[:-1]
+            if msg_str:
+                if TT:
+                    #if message spliter exist and fix to first character
+                    if TT == 1 and not ii.replace('\n',''):
+                        msg_str=msg_str + msg_split + a
+                    else:
+                        msg_str=msg_str + a
+                    if ii.replace('\n',''): TT=0 # remove special format tag
+                else:
+                    msg_str=msg_str + msg_split + a
+            else:
+                if intro_msg:
+                    msg_str=intro_msg + a 
+                elif intro_len:
+                    msg_str= Space(num=intro_len) + a
+                else:
+                    msg_str=a 
+            # if end of the line has extra '\n' then recover the losted '\n' by WrapString()
+            if isinstance(ii,str) and len(ii) > 1 and ii[-1] == '\n':
+                msg_str=msg_str + ii[-1]
+        return msg_str
 
-    #Get Logfile information for OLD version
+    #Get Logfile information for OLD version and remove the Logfile information in the messages
     if isinstance(logfile,str):
         logfile=logfile.split(',')
     elif isinstance(logfile,tuple):
@@ -5701,6 +5713,25 @@ def printf(*msg,**opts):
                     msg=tuple(msg)
                 else:
                     msg.remove(ii)
+    
+    # save msg(removed log_file information) to syslogd 
+    if syslogd:
+        # Make a message to single line
+        tmp_str=msg_maker(*msg,msg_split=msg_split)
+        if syslogd in ['INFO','info']:
+            syslog.syslog(syslog.LOG_INFO,tmp_str)
+        elif syslogd in ['KERN','kern']:
+            syslog.syslog(syslog.LOG_KERN,tmp_str)
+        elif syslogd in ['ERR','err']:
+            syslog.syslog(syslog.LOG_ERR,tmp_str)
+        elif syslogd in ['CRIT','crit']:
+            syslog.syslog(syslog.LOG_CRIT,tmp_str)
+        elif syslogd in ['WARN','warn']:
+            syslog.syslog(syslog.LOG_WARNING,tmp_str)
+        elif syslogd in ['DBG','DEBUG','dbg','debug']:
+            syslog.syslog(syslog.LOG_DEBUG,tmp_str)
+        else:
+            syslog.syslog(tmp_str)
 
     # Make a Intro
     intro_len=0
@@ -5760,27 +5791,18 @@ def printf(*msg,**opts):
             intro_len=intro_len+len(intro)+2
 
     # Make input data to a string msg 
-    msg_str=''
-    for ii in msg:
-        if not isinstance(ii,str):
-            if msg_str:
-                msg_str=msg_str + intro_msg + ColorStr(WrapString(Str(pprint.pformat(ii),default='org'),fspace=intro_len if msg_str else 0, nspace=intro_len,mode='space'),**opts)
-            else:
-                msg_str=intro_msg + ColorStr(WrapString(Str(pprint.pformat(ii),default='org'),fspace=intro_len if msg_str else 0, nspace=intro_len,mode='space'),**opts)
-        else:
-            if msg_str:
-                msg_str=msg_str + intro_msg + ColorStr(WrapString(Str(ii,default='org'),fspace=intro_len if msg_str else 0, nspace=intro_len,mode='space'),**opts)
-            else:
-                if ii and ii[0] in ['\n','\r']: # Fix : losted first '\n' to recover
-                    msg_str=intro_msg + ii[0] + ColorStr(WrapString(Str(ii,default='org'),fspace=intro_len if msg_str else 0, nspace=intro_len,mode='space'),**opts)
-                else:
-                    msg_str=intro_msg + ColorStr(WrapString(Str(ii,default='org'),fspace=intro_len if msg_str else 0, nspace=intro_len,mode='space'),**opts)
-
-    # Reduce/remove duplicated(start_newline + msg_str[0]) newline to single newline
     if start_newline:
-        if msg_str and msg_str[0] == '\n': msg_str=msg_str[1:]
-    if new_line:
-        if msg_str and msg_str[-1] == '\n': msg_str=msg_str[:-1]
+        if len(msg) and isinstance(msg[0],str) and msg[0][0] == '\n': msg[0]=msg[0][1:]
+        if start_newline == 'auto':
+            if printf_newline_info.Get(dsp):
+                start_newline='\n'
+            else:
+                start_newline=''
+    msg_str=msg_maker(*msg,msg_split=msg_split,intro_len=intro_len,intro_msg='' if no_intro is None else intro_msg)
+# DOn't need below code
+#    if new_line:
+#        if msg_str and msg_str[-1] == '\n': msg_str=msg_str[:-1]
+
     ## if end of line have no newline, but it has intro then adding start_newline
     #if intro_msg and not no_start_newline:
     #    if printf_newline_info.Get(dsp): 
@@ -7545,72 +7567,31 @@ class kThread(Thread):
     def PPID(self):
         return os.getpid()
 
+def Progress(symbol='.',**opts):
+    start_newline=opts.get('start_newline',False)
+    end_newline=opts.get('end_newline',opts.get('newline',True))
+    log=opts.get('log',None)
+    interval=Int(opts.get('interval'),5)
+    timeout=Int(opts.get('timeout'),3600*100)
+    mode=opts.get('mode','s')
+    stop=opts['stop'] if 'stop' in opts else False
+    delay=opts['delay'] if 'delay' in opts else False
+    if start_newline:
+        printf('',ignore_empty=False,start_newline='auto',log=log,end='',mode=mode)
+    Time=TIME()
+    while True:
+        if IsTrue(stop) or (timeout > 0 and Time.Out(timeout)): break
+        if delay:
+            if (isinstance(delay,int) and not  Time.Out(delay)) or not IsTrue(delay): #less delay time then skip progress log
+                time.sleep(0.3)
+                continue
+        printf(symbol,direct=True,log=log,log_level=1,mode=mode)
+        time.sleep(interval)
+    if end_newline:
+        printf('',ignore_empty=False,no_intro=True,log=log,mode=mode)
+
 
 #if __name__ == "__main__":
 #    # Integer
 #    print("Get(12345):",Get(12345))
 #    print("Get(12345,1):",Get(12345,1))
-#    # String
-#    print("Get('12345'):",Get('12345'))
-#    print("Get('12345',0):",Get('12345',0))
-#    print("Get('12345',1):",Get('12345',1))
-#    print("Get('12345',4):",Get('12345',4))
-#    print("Get('12345',5):",Get('12345',5))
-#    print("Get('12345',-1):",Get('12345',-1))
-#    print("Get('12345',-5):",Get('12345',-5))
-#    print("Get('12345',-7):",Get('12345',-7))
-#    # List
-#    print("Get([1,2,3,4,5]):",Get([1,2,3,4,5]))
-#    print("Get([1,2,3,4,5],1):",Get([1,2,3,4,5],1))
-#    print("Get([1,2,3,4,5],(1,3)):",Get([1,2,3,4,5],(1,3)))
-#    print("Get([1,2,3,4,5],'1-3')):",Get([1,2,3,4,5],'1-3'))
-#    print("Get([1,2,3,4,5],-1)):",Get([1,2,3,4,5],-1))
-#    print("Get([1,2,3,4,5],-5)):",Get([1,2,3,4,5],-5))
-#    print("Get([1,2,3,4,5],-6)):",Get([1,2,3,4,5],-6))
-#    print("Get([1,2,3,4,5],5)):",Get([1,2,3,4,5],5))
-#    print("Get([1,2,3,4,5],'1|2')):",Get([1,2,3,4,5],'1|2'))
-#    print("Get([1,2,3,4,5],'1|2',idx_only=True)):",Get([1,2,3,4,5],'1|2',idx_only=True))
-#    # Dict
-#    print("Get({'a':{'b':{'c':1,'d':2},'e':3},'f':4}):",Get({'a':{'b':{'c':1,'d':2},'e':3},'f':4}))
-#    print("Get({'a':{'b':{'c':1,'d':2},'e':3},'f':4},'/a/b/c'):",Get({'a':{'b':{'c':1,'d':2},'e':3},'f':4},'/a/b/c'))
-#    print("Get({'a':{'b':{'c':1,'d':2},'e':3},'f':4},'a/b/d'):",Get({'a':{'b':{'c':1,'d':2},'e':3},'f':4},'a/b/d'))
-#    print("Get({'a':{'b':{'c':1,'d':2},'e':3},'f':4},'f'):",Get({'a':{'b':{'c':1,'d':2},'e':3},'f':4},'f'))
-#    print("Get({'a':{'b':{'c':1,'d':2},'e':3},'f':4},'a'):",Get({'a':{'b':{'c':1,'d':2},'e':3},'f':4},'a'))
-#    print("Get({'a':{'b':{'c':1,'d':2},'e':3},'f':4},-1):",Get({'a':{'b':{'c':1,'d':2},'e':3},'f':4},-1))
-#    print("Get({'a':{'b':{'c':1,'d':2},'e':3},'f':4},-1,idx_only=True):",Get({'a':{'b':{'c':1,'d':2},'e':3},'f':4},-1,idx_only=True))
-#    print("Get({'a':{'b':{'c':1,'d':2},'e':3},'f':4,'g':5},(1,2)):",Get({'a':{'b':{'c':1,'d':2},'e':3},'f':4,'g':5},(1,2)))
-#    # Module
-#    me=MyModule()
-#    #print("Get(me):",Get(me))
-#    print("Get(me,'Get'):",Get(me,'Get'))
-#    print("Get(me,'Get','Import'):",Get(me,'Get','Import'))
-#    print("Get(me,'func_list'):",Get(me,'func_list'))
-#    
-#    print('1 : ',TypeName(1))
-#    print('ping : ',TypeName('ping'))
-#    print('function ping : ',TypeName(ping))
-#    print('int : ',TypeName(int))
-#    print('str : ',TypeName(str))
-#    print('function : ',TypeName('function'))
-#    print('classobj : ',TypeName('classobj'))
-#    print('3.14 : ',TypeName(3.14))
-#    print('WEB : ',TypeName('WEB'))
-#    print('class WEB : ',TypeName(WEB))
-#    print('bool : ',TypeName(bool))
-#    print('False : ',TypeName(False))
-#    print('True : ',TypeName(True))
-#    print('None : ',TypeName(None))
-    # Function
-#    def KLog(inps,log_level=3,**opts):
-#        print("KLog:",':',inps,'log_level=',log_level)
-# 
-#    print('Klog1:',FeedFunc('KLog',inps='1111',log_level=9))
-#    print('Klog2:',FeedFunc('KLog','akd','uuuuuu',log_level=8,abc=33))
-#    print('Klog3:',FeedFunc('KLog',log_level=8,abc=33))
-#    print('int:',FeedFunc(int,'33',base=10))
-#    print('str:',FeedFunc(str,33))
-#    print('str:',FeedFunc(str,b'33'))
-#    print('list:',FeedFunc(list,'33'))
-#    print('list:',FeedFunc(list))
-#    print('dict:',FeedFunc(dict,[('aa','33')]))
-#    print('dict:',FeedFunc(dict))
