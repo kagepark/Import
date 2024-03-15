@@ -5623,7 +5623,7 @@ def printf(*msg,**opts):
     ignore_empty=opts.get('ignore_empty',printf_ignore_empty)
     msg_split=opts.get('msg_split',' ')
     msg=list(msg)
-    if no_intro is False or direct:
+    if no_intro is True or direct:
         date_format=None
     else:
         date_format=opts.get('date_format','%m/%d/%Y %H:%M:%S' if opts.get('date') else None)
