@@ -4007,9 +4007,9 @@ def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin
             time.sleep(0.1)
             if stop():
                 return
-        if progress_pre_new_line:
-            printf('',ignore_empty=False,start_newline=True,log=log,end='',log_level=1)
         local_printed=False
+        if progress_pre_new_line:
+            printf('',ignore_empty=False,start_newline='auto',log=log,end='',log_level=1)
         i=0
         while True:
             if stop(): break
@@ -5733,6 +5733,16 @@ def printf(*msg,**opts):
         else:
             syslog.syslog(tmp_str)
 
+    #When having Log function then give the data to log function
+    log_p=False
+    if IsFunction(log): # Log function( debug mode log function too )
+        try:
+            FeedFunc(log,*msg,**opts)
+            # If log function take over the log then no more print to others
+            return
+        except:
+            pass
+
     # Make a Intro
     intro_len=0
     intro_msg=''
@@ -5792,7 +5802,7 @@ def printf(*msg,**opts):
 
     # Make input data to a string msg 
     if start_newline:
-        if len(msg) and isinstance(msg[0],str) and msg[0][0] == '\n': msg[0]=msg[0][1:]
+        if len(msg) and isinstance(msg[0],str) and len(msg[0]) and msg[0][0] == '\n': msg[0]=msg[0][1:]
         if start_newline == 'auto':
             if printf_newline_info.Get(dsp):
                 start_newline='\n'
@@ -5828,99 +5838,70 @@ def printf(*msg,**opts):
             print('intro                 :[{}]'.format(intro_msg))
             print('log level             :{} < {} (print:{})'.format(printf_log_base,log_level, printf_log_base < log_level if IsInt(printf_log_base) and IsInt(log_level) else True))
             print('before mode print     :[{}]'.format(start_newline+msg_str+new_line))
-    #When having Log function then give the data to log function
-    log_p=False
-    if IsFunction(log): # Log function( debug mode log function too )
-        try:
-            #FeedFunc(log,start_newline+msg_str+new_line,**opts)
-            if not msg_str:
-                if caller_detail or caller_tree or caller_history or 'd' in dsp: #If no message then ignore
-                    msg_str=intro_msg + ColorStr(WrapString('[** EMPTY **]',fspace=intro_len, nspace=intro_len,mode='space'),**opts)
-            if msg_str: #If no message then ignore
-                # if end of line have no newline, but it has intro then adding start_newline
-                if intro_msg and not no_start_newline:
-                    if printf_newline_info.Get(log): 
-                        start_newline='\n'
-                #if changed option then update the option
-                opts['start_newline']=start_newline
-                opts['new_line']=new_line
-                if scr_dbg_print:
-                    print('mode                  :{} (before no newline:{})'.format(log,True if printf_newline_info.Get(log) else False))
-                    print('updated start newline :{}'.format(True if start_newline else False))
-                    print('print                 :[{}]'.format(start_newline+msg_str+new_line))
-                    print('-----------------------------------------')
-                a=FeedFunc(log,start_newline+msg_str+new_line,**opts)
-                if new_line:
-                    printf_newline_info.Del(log)
-                else:
-                    printf_newline_info.Put(log,True)
-                log_p=True
-        except:
-            pass
 
-    if not log_p: #If did not done with log function
-        # Save to file or print to screen filter with log_level and already logging with log function or not.
-        if IsInt(printf_log_base) and IsInt(log_level):
-            if printf_log_base < log_level:
-                return
-        # if just whitespace then not newline, something else with data then what ever
-        # Save msg to logfile when defined logfile
-        if logfile:
-            for ii in logfile:
-                if isinstance(ii,str) and ii:
-                    ii_d=os.path.dirname(ii)
-                    ii_d=ii_d if ii_d else '.' # If just filename then directory to .(current directory)
-                    if ii and os.path.isdir(ii_d):
-                        if not msg_str:
-                            if caller_detail or caller_tree or caller_history or not ignore_empty or 'd' in dsp:   # Ignore empty data on screen w/o debugging 
-                                msg_str=intro_msg + ColorStr(WrapString('[** EMPTY **]',fspace=intro_len, nspace=intro_len,mode='space'),**opts)
-                        if not msg_str: return
+    # Save to file or print to screen filter with log_level and already logging with log function or not.
+    if 'd' in dsp and IsInt(printf_log_base) and IsInt(log_level):
+        if printf_log_base < log_level:
+            return
+    # if just whitespace then not newline, something else with data then what ever
+    # Save msg to logfile when defined logfile
+    if logfile: # all mode can (even if d, f, i) just loging to file.
+        for ii in logfile:
+            if isinstance(ii,str) and ii:
+                ii_d=os.path.dirname(ii)
+                ii_d=ii_d if ii_d else '.' # If just filename then directory to .(current directory)
+                if ii and os.path.isdir(ii_d):
+                    if not msg_str:
+                        if caller_detail or caller_tree or caller_history or not ignore_empty or 'd' in dsp:   # Ignore empty data on screen w/o debugging 
+                            arg={'parent':1,'line_number':True,'filename':True,'args':False,'history':False,'tree':False}
+                            call_name=FunctionName(**arg)
+                            msg_str=intro_msg + ColorStr(WrapString('[** Empty-Data **] ({})'.format(call_name),fspace=intro_len, nspace=intro_len,mode='space'),**opts)
+                    if not msg_str: return
 
-                        # if end of line have no newline, but it has intro then adding start_newline
-                        if intro_msg and not no_start_newline:
-                            if printf_newline_info.Get(Bytes(ii)): 
-                                start_newline='\n'
-                        if scr_dbg_print:
-                            print('mode                  :{} (before no newline:{})'.format(ii,True if printf_newline_info.Get(Bytes(ii)) else False))
-                            print('updated start newline :{}'.format(True if start_newline else False))
-                            print('print                 :[{}]'.format(start_newline+msg_str+new_line))
-                            print('-----------------------------------------')
-                        log_p=True  # writing to log_file
-                        with open(ii,'a+') as f:
-                            f.write(start_newline+msg_str+new_line)
-                        if new_line:
-                            printf_newline_info.Del(Bytes(ii))
-                        else:
-                            printf_newline_info.Put(Bytes(ii),True)
-        if ignore_empty is True and not msg_str: return # Ignore empty data on screen
-        # print msg to screen when did not done with logfile or log function
-        if (log_p is False and 'a' in dsp) or 's' in dsp or 'e' in dsp or 'c' in dsp:
-             if 'e' in dsp:
-                 # if end of line have no newline, but it has intro then adding start_newline
-                 if intro_msg and not no_start_newline:
-                     if printf_newline_info.Get('e'): 
-                         start_newline='\n'
-                 if scr_dbg_print:
-                     print('mode                  :{} (before no newline:{})'.format('e',True if printf_newline_info.Get('e') else False))
-                     print('updated start newline :{}'.format(True if start_newline else False))
-                     print('print                 :[{}]'.format(start_newline+msg_str+new_line))
-                     print('-----------------------------------------')
-                 StdErr(start_newline+msg_str+new_line)
-                 printf_newline_info.Put('e',False if new_line else True)
-             elif 'c' in dsp: #Display to console (it also work with Robot Framework)
-                 print(start_newline+msg_str+new_line,end='',file=sys.__stdout__)
-             else: # Print out on screen
-                 if intro_msg and not no_start_newline:
-                     if printf_newline_info.Get('a' if 'a' in dsp else 's'): 
-                         start_newline='\n'
-                 if scr_dbg_print:
-                     print('mode                  :{} (before no newline:{})'.format('a',True if printf_newline_info.Get('a' if 'a' in dsp else 's') else False))
-                     print('updated start newline :{}'.format(True if start_newline else False))
-                     print('print                 :[{}]'.format(start_newline+msg_str+new_line))
-                     print('-----------------------------------------')
-                 # if end of line have no newline, but it has intro then adding start_newline
-                 StdOut(start_newline+msg_str+new_line)
-                 printf_newline_info.Put('a' if 'a' in dsp else 's',False if new_line else True)
+                    # if end of line have no newline, but it has intro then adding start_newline
+                    if intro_msg and not no_start_newline:
+                        if printf_newline_info.Get(Bytes(ii)): 
+                            start_newline='\n'
+                    if scr_dbg_print:
+                        print('mode                  :{} (before no newline:{})'.format(ii,True if printf_newline_info.Get(Bytes(ii)) else False))
+                        print('updated start newline :{}'.format(True if start_newline else False))
+                        print('print                 :[{}]'.format(start_newline+msg_str+new_line))
+                        print('-----------------------------------------')
+                    log_p=True  # writing to log_file
+                    with open(ii,'a+') as f:
+                        f.write(start_newline+msg_str+new_line)
+                    if new_line:
+                        printf_newline_info.Del(Bytes(ii))
+                    else:
+                        printf_newline_info.Put(Bytes(ii),True)
+    if ignore_empty is True and not msg_str: return # Ignore empty data on screen
+    # print msg to screen when did not done with logfile or log function
+    if 'e' in dsp:
+        # if end of line have no newline, but it has intro then adding start_newline
+        if intro_msg and not no_start_newline:
+            if printf_newline_info.Get('e'): 
+                start_newline='\n'
+        if scr_dbg_print:
+            print('mode                  :{} (before no newline:{})'.format('e',True if printf_newline_info.Get('e') else False))
+            print('updated start newline :{}'.format(True if start_newline else False))
+            print('print                 :[{}]'.format(start_newline+msg_str+new_line))
+            print('-----------------------------------------')
+        StdErr(start_newline+msg_str+new_line)
+        printf_newline_info.Put('e',False if new_line else True)
+    elif 'c' in dsp: #Display to console (it also work with Robot Framework)
+        print(start_newline+msg_str+new_line,end='',file=sys.__stdout__)
+    elif 's' in dsp or 'a' in dsp: # Print out on screen
+        if intro_msg and not no_start_newline:
+            if printf_newline_info.Get('a' if 'a' in dsp else 's'): 
+                start_newline='\n'
+        if scr_dbg_print:
+            print('mode                  :{} (before no newline:{})'.format('a',True if printf_newline_info.Get('a' if 'a' in dsp else 's') else False))
+            print('updated start newline :{}'.format(True if start_newline else False))
+            print('print                 :[{}]'.format(start_newline+msg_str+new_line))
+            print('-----------------------------------------')
+        # if end of line have no newline, but it has intro then adding start_newline
+        StdOut(start_newline+msg_str+new_line)
+        printf_newline_info.Put('a' if 'a' in dsp else 's',False if new_line else True)
     # return msg when required return whatever condition
     if 'r' in dsp:
         return msg_str
