@@ -44,6 +44,7 @@ printf_caller_tree=False
 printf_caller_name=False
 printf_scr_dbg=False
 printf_ignore_empty=True
+printf_dbg_empty=False
 
 krc_define={
   'GOOD':[True,'True','Good','Ok','Pass','Sure',{'OK'}],
@@ -3554,7 +3555,7 @@ def ping(host,**opts):
        time.sleep(interval)
        i+=1
     if end_newline:
-        if local_printed: printf('',log=log, dsp=dspi,ignore_empty=False)
+        if local_printed: printf('',log=log, no_intro=True, dsp=dspi,caller_parent=1,ignore_empty=False)
     return good
 
 class PAGE:
@@ -4008,8 +4009,8 @@ def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin
             if stop():
                 return
         local_printed=False
-        if progress_pre_new_line:
-            printf('',ignore_empty=False,start_newline='auto',log=log,end='',log_level=1)
+#        if progress_pre_new_line:
+#            printf('',ignore_empty=False,start_newline=True,log=log,end='',log_level=1)
         i=0
         while True:
             if stop(): break
@@ -4020,7 +4021,7 @@ def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin
             i+=1
             time.sleep(0.1)
         if progress_post_new_line and local_printed:
-            printf('',ignore_empty=False,no_intro=True,log=log,log_level=1)
+            printf('',ignore_empty=False,caller_parent=1,no_intro=True,log=log,log_level=1)
     start_time=TIME()
     if not Type(cmd,'str',data=True):
         return -1,'wrong command information :{0}'.format(cmd),'',start_time.Init(),start_time.Init(),start_time.Now(int),cmd,path
@@ -5599,6 +5600,7 @@ def printf(*msg,**opts):
     global printf_caller_name
     global printf_newline_info
     global printf_ignore_empty
+    global printf_dbg_empty
     global printf_scr_dbg
     direct=opts.get('direct',False)
     dsp=opts.get('dsp',opts.get('mode','a'))
@@ -5621,6 +5623,7 @@ def printf(*msg,**opts):
     scr_dbg_condition=opts.get('scr_dbg_condition')
     no_intro=opts.get('no_intro',False)
     ignore_empty=opts.get('ignore_empty',printf_ignore_empty)
+    dbg_empty=opts.get('dbg_empty',printf_dbg_empty)
     msg_split=opts.get('msg_split',' ')
     msg=list(msg)
     if no_intro is True or direct:
@@ -5737,6 +5740,14 @@ def printf(*msg,**opts):
     log_p=False
     if IsFunction(log): # Log function( debug mode log function too )
         try:
+            if ('d' in dsp or 'f' in dsp) and logfile:
+                if 'caller_parent' in opts:
+                    if isinstance(opts['caller_parent'],int):
+                        opts['caller_parent']=opts['caller_parent']+1
+                    else:
+                        opts['caller_parent']=2
+                else:
+                    opts['caller_parent']=2
             FeedFunc(log,*msg,**opts)
             # If log function take over the log then no more print to others
             return
@@ -5852,8 +5863,9 @@ def printf(*msg,**opts):
                 ii_d=ii_d if ii_d else '.' # If just filename then directory to .(current directory)
                 if ii and os.path.isdir(ii_d):
                     if not msg_str:
-                        if caller_detail or caller_tree or caller_history or not ignore_empty or 'd' in dsp:   # Ignore empty data on screen w/o debugging 
-                            arg={'parent':1,'line_number':True,'filename':True,'args':False,'history':False,'tree':False}
+                        if dbg_empty and not ignore_empty:   # Ignore empty data on screen w/o debugging 
+                            parent_n=opts.get('caller_parent') if isinstance(opts.get('caller_parent'),int) else 1
+                            arg={'parent':parent_n,'line_number':True,'filename':True,'args':False,'history':False,'tree':False}
                             call_name=FunctionName(**arg)
                             msg_str=intro_msg + ColorStr(WrapString('[** Empty-Data **] ({})'.format(call_name),fspace=intro_len, nspace=intro_len,mode='space'),**opts)
                     if not msg_str: return
@@ -7557,8 +7569,9 @@ def Progress(symbol='.',**opts):
     mode=opts.get('mode','s')
     stop=opts['stop'] if 'stop' in opts else False
     delay=opts['delay'] if 'delay' in opts else False
+    local_printed=False
     if start_newline:
-        printf('',ignore_empty=False,start_newline='auto',log=log,end='',mode=mode)
+        printf('',ignore_empty=False,caller_parent=1,start_newline='auto',log=log,end='',mode=mode)
     Time=TIME()
     while True:
         if IsTrue(stop) or (timeout > 0 and Time.Out(timeout)): break
@@ -7567,9 +7580,10 @@ def Progress(symbol='.',**opts):
                 time.sleep(0.3)
                 continue
         printf(symbol,direct=True,log=log,log_level=1,mode=mode)
+        local_printed=True
         time.sleep(interval)
-    if end_newline:
-        printf('',ignore_empty=False,no_intro=True,log=log,mode=mode)
+    if end_newline and local_printed:
+        printf('',ignore_empty=False,caller_parent=1,no_intro=True,log=log,mode=mode)
 
 
 #if __name__ == "__main__":
