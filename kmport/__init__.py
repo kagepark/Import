@@ -3019,7 +3019,11 @@ def Get(*inps,**opts):
     if len(inps) == 1:
         idx=inps[0]
     elif len(inps) > 1:
-        idx=inps[:]
+        if isinstance(obj,(list,tuple)) and not isinstance(inps[-1],int) and 'default' not in opts:
+            idx=inps[:-1]
+            default=inps[-1]
+        else:
+            idx=inps[:]
     else:
         idx=None
     #When check type
