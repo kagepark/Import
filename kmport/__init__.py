@@ -3248,10 +3248,10 @@ def ExceptMessage(msg='',default=None):
         return msg
     return default
 
-def IpV4(ip,out='str',default=False,port=None,bmc=False,used=False,pool=None,support_hostname=False,ifname=False):
+def IpV4(ip=None,out='str',default=False,port=None,bmc=False,used=False,pool=None,support_hostname=False,ifname=False):
     '''
     check/convert IP
-    ip : int, str, ...
+    ip : int, str, domainname, ethernet dev name, None
     out:
       str : default : convert to xxx.xxx.xxx.xxx format
       int : convert to int format
@@ -3270,26 +3270,29 @@ def IpV4(ip,out='str',default=False,port=None,bmc=False,used=False,pool=None,sup
       True: ip will network device name then find ip address
     '''
     if ifname is True:
-        if not os.path.isdir('/sys/class/net/{}'.format(ip)):
-            return default
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            return socket.inet_ntoa(fcntl.ioctl(
-                s.fileno(),
-                0x8915,  # SIOCGIFADDR
-                struct.pack('256s', ip[:15])
-            )[20:24])
-        except:
-            try:
-                dev_info=os.popen('ip addr show {}'.format(ip))
-                if dev_info:
-                    found_ip=dev_info.read().split("inet ")[1].split("/")[0]
-                    dev_info.close()
-                    return found_ip
-            except:
+        if isinstance(ip,str) and ip:
+            if not os.path.isdir('/sys/class/net/{}'.format(ip)):
                 return default
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                return socket.inet_ntoa(fcntl.ioctl(
+                    s.fileno(),
+                    0x8915,  # SIOCGIFADDR
+                    struct.pack('256s', ip[:15])
+                )[20:24])
+            except:
+                try:
+                    dev_info=os.popen('ip addr show {}'.format(ip))
+                    if dev_info:
+                        found_ip=dev_info.read().split("inet ")[1].split("/")[0]
+                        dev_info.close()
+                        return found_ip
+                except:
+                    return default
         return socket.gethostbyname(socket.gethostname())
-        
+
+    if IsNone(ip): return default    
+
     def IsOpenPort(ip,port):
         '''
         It connectionable port(?) like as ssh, ftp, telnet, web, ...
