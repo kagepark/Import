@@ -1171,7 +1171,7 @@ class FIND:
                 if match: return OutFormat([match.group()],out=out,peel=peel)
         #return OutFormat(default,out=out,peel=peel)
         return OutFormat([],out=out,peel=peel,org=src,default=default)
-def Found(data,find,digitstring=False,word=False,white_space=True,sense=True,location=False):
+def Found(data,find,digitstring=False,word=False,white_space=True,sense=True,location=False,pythonlike=False):
     '''
     if found <find> in <data> then return True, not then False
     If find "[All]" then you can type "\[All\]" at the <find> location
@@ -1228,6 +1228,15 @@ def Found(data,find,digitstring=False,word=False,white_space=True,sense=True,loc
     data=WhiteStrip(data,BoolOperation(white_space,mode='oppisit'))
     type_data=type(data).__name__
     type_find=type(find).__name__
+    if pythonlike:
+        if type_data in ['NoneType','bool','str']:
+            data='{}'.format(data).capitalize()
+            if data == 'Null': data='None'
+            type_data='str'
+        if type_find in ['NoneType','bool','str']:
+            find='{}'.format(find).capitalize()
+            if find == 'Null': find='None'
+            type_find='str'
     if digitstring:
         if type_data in ['int','float']:
             data='{}'.format(data)
@@ -1239,7 +1248,7 @@ def Found(data,find,digitstring=False,word=False,white_space=True,sense=True,loc
         return _Found_(data,find,word,sense,location)
     return data == find
 
-def IsSame(src,dest,sense=False,order=False,_type_=False,digitstring=True,white_space=False):
+def IsSame(src,dest,sense=False,order=False,_type_=False,digitstring=True,white_space=False,pythonlike=False,ignore_keys=[]):
     '''
     return True/False
     Check same data or not between src and dest datas
@@ -1273,12 +1282,17 @@ def IsSame(src,dest,sense=False,order=False,_type_=False,digitstring=True,white_
             if dest:
                 if dest[0] != '^': dest='^'+dest
                 if dest[-1] != '$': dest=dest+'$'
+    if pythonlike:
+        if isinstance(src,str):
+            src=FormData(src)
+        if isinstance(dest,str):
+            dest=FormData(dest)
     if isinstance(src,(list,tuple)) and isinstance(dest,(list,tuple)):
         if sense and order: return src == dest
         if len(src) != len(dest): return False
         if order:
             for j in range(0,len(src)):
-                if not Found(src[j],dest[j],digitstring=digitstring,white_space=white_space,sense=sense): return False
+                if not Found(src[j],dest[j],digitstring=digitstring,white_space=white_space,sense=sense,pythonlike=pythonlike): return False
             return True
         else:
             a=list(src[:])
@@ -1286,10 +1300,10 @@ def IsSame(src,dest,sense=False,order=False,_type_=False,digitstring=True,white_
             for j in range(0,len(src)):
                 for i in range(0,len(dest)):
                     if (isinstance(src[j],dict) and isinstance(dest[j],dict)) or (isinstance(src[j],(list,tuple)) and isinstance(dest[j],(list,tuple))):
-                        if IsSame(src[j],dest[i],sense,order,_type_,digitstring,white_space):
+                        if IsSame(src[j],dest[i],sense,order,_type_,digitstring,white_space,pythonlike,ignore_keys):
                             a[j]=None
                             b[i]=None
-                    elif Found(src[j],dest[i],digitstring=digitstring,white_space=white_space,sense=sense):
+                    elif Found(src[j],dest[i],digitstring=digitstring,white_space=white_space,sense=sense,pythonlike=pythonlike):
                         a[j]=None
                         b[i]=None
             if a.count(None) == len(a) and b.count(None) == len(b): return True
@@ -1297,15 +1311,16 @@ def IsSame(src,dest,sense=False,order=False,_type_=False,digitstring=True,white_
     elif isinstance(src,dict) and isinstance(dest,dict):
         if sense: return src == dest
         if len(src) != len(dest): return False
-        for j in src:
-            if j in dest:
-                if (isinstance(src[j],dict) and isinstance(dest[j],dict)) or (isinstance(src[j],(list,tuple)) and isinstance(dest[j],(list,tuple))):
-                    if not IsSame(src[j],dest[i],sense,order,_type_,digitstring,white_space): return False
+        for s in src:
+            if s in ignore_keys: continue
+            if s in dest:
+                if (isinstance(src[s],dict) and isinstance(dest[s],dict)) or (isinstance(src[s],(list,tuple)) and isinstance(dest[s],(list,tuple))):
+                    if not IsSame(src[s],dest[s],sense,order,_type_,digitstring,white_space,pythonlike,ignore_keys): return False
                 else:
-                    if not Found(src[j],dest[j],digitstring=digitstring,white_space=white_space,sense=sense): return False
+                    if not Found(src[s],dest[s],digitstring=digitstring,white_space=white_space,sense=sense,pythonlike=pythonlike): return False
         return True
     else:
-        return Found(src,dest,digitstring=digitstring,white_space=white_space,sense=sense)
+        return Found(src,dest,digitstring=digitstring,white_space=white_space,sense=sense,pythonlike=pythonlike)
 
 def IsIn(find,dest,idx=False,default=False,sense=False,startswith=True,endswith=True,digitstring=True,word=True,white_space=False,order=False,**opts):
     '''
@@ -3717,7 +3732,7 @@ class WEB:
         port=opts.get('port',None)
         bmc=opts.get('bmc',False)
         mode=opts.get('mode',opts.get('method','get'))
-        max_try=opts.get('max_try',3) # Retry max number
+        max_try=opts.get('max_try',opts.get('retry',opts.get('loop',opts.get('try',3)))) # Retry max number
         auth=opts.get('auth',None)
         user=opts.get('user',None)
         passwd=opts.get('passwd',None)
