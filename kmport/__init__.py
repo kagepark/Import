@@ -5462,7 +5462,10 @@ def OutFormat(data,out=None,strip=False,peel=None,org=None,default=None):
         True : remove white space
     '''
     out_data=None
-    if out in [tuple,'tuple',list,'list']:
+    if IsIn(data,[[],{}]) and IsIn(default,['org','original']):
+        #If no data and default is original then convert original to out
+        data=org
+    if IsIn(out,[tuple,'tuple',list,'list']):
         if not isinstance(data,(tuple,list)):
             out_data=[data]
         else:
@@ -5480,21 +5483,20 @@ def OutFormat(data,out=None,strip=False,peel=None,org=None,default=None):
             return default
         else:
             return [Default(org,default)]
-    elif out in [dict,'dict']:
+    elif IsIn(out,[dict,'dict']):
         if data:
             return Dict(data)
         elif isinstance(default,dict):
             return default
         else:
             return Default(org,default)
-    elif out in ['str',str]:
-        out_data=WhiteStrip(Peel(data,peel),strip)
-    elif out in ['int',int]:
+    elif IsIn(out,['str',str,'string','text']):
+        out_data=WhiteStrip(Peel(Str(data),peel),strip)
+    elif IsIn(out,['int',int,'integer','number','numeric']):
         out_data=Int(WhiteStrip(Peel(data,peel),strip))
     if out_data is False: #if str or int got False then 
         return Default(org,default)
-    if out == 'raw' or IsNone(out):
-        if IsNone(peel): peel=True
+    if IsNone(peel): peel=True
     out_data=WhiteStrip(Peel(data,peel),strip)
     if out_data: return out_data
     return Default(org,default)
