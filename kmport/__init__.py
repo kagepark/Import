@@ -5311,7 +5311,6 @@ def List(*inps,**opts):
             elif Type(i,dict):
                 rt=rt+List(rt,i,**opts)
                 continue
-            print('>>',i,':',ignores,isinstance(ignores,tuple),Type(i,ignores),IsIn(i,ignores))
             if isinstance(ignores,tuple) and (Type(i,ignores) or IsIn(i,ignores)):
                 continue
             rt.append(i)
