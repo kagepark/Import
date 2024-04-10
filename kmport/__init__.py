@@ -905,7 +905,7 @@ def TypeName(obj):
     '''
     obj_dir=dir(obj)
     obj_name=type(obj).__name__
-    if obj_name in ['function']: return obj_name
+    if obj_name in ['function','ImmutableMultiDict']: return obj_name
     # Special Type of Class : Remove according to below code
     #elif obj_name in ['kDict','kList']+[name for name, obj in inspect.getmembers(sys.modules[__name__]) if inspect.isclass(obj)]: # Special case name
     #    print('>>> TypeName2:',obj_name, '<=', obj)
@@ -1759,7 +1759,13 @@ def Dict(*inp,deepcopy=False,copy=False,**opt):
         else:
             src=inp[0]
     src_type=TypeName(src)
-    if isinstance(src,dict):
+    if src_type in ['ImmutableMultiDict']:
+        if len(src) > 0:
+            tmp={}
+            for ii in src:
+                tmp[ii]=src[ii]
+            src=tmp
+    elif isinstance(src,dict):
         if src_type == 'QueryDict': # Update data at request.data of Django
             try:
                 src._mutable=True
@@ -1790,12 +1796,6 @@ def Dict(*inp,deepcopy=False,copy=False,**opt):
                 else:
                     tmp[ii[0]]=ii[1]
         src=tmp
-    elif src_type in ['ImmutableMultiDict']:
-        if len(src) > 0:
-            tmp={}
-            for ii in src:
-                tmp[ii]=src[ii]
-            src=tmp
     else:
         src={}
     #Update Extra inputs
