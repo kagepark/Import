@@ -2166,7 +2166,12 @@ def ModLoad(inp,force=False,globalenv=Global(),unload=False,re_load=False):
                 except:
                     globalenv[name]=import_module('{}.{}'.format(module,class_name))
         else:
-            globalenv[name]=import_module(module)
+            try:
+                globalenv[name]=import_module(module)
+            except:
+                err=ExceptMessage()
+                StdErr('---------------------------------------------------------\n{}---------------------------------------------------------\n'.format(err))
+                return 0,module
         return wildcard,module # Loaded. So return wildcard information
     except AttributeError: # Try Loading looped Module/Class then ignore  or Wrong define
         return 0,module
