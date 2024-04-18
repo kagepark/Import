@@ -138,17 +138,27 @@ class PRINTED:
 
 printf_newline_info=PRINTED()
 
-def Global():
-    '''
-    Method's global variables
-    '''
-    #return dict(inspect.getmembers(inspect.stack()[-1][0]))["f_globals"]
-    z=0
-    for ii in inspect.stack():
-        if '<module>' in ii: break
-        z+=1
-    return dict(inspect.getmembers(inspect.stack()[z][0]))["f_globals"]
-
+def Global(ignores=['__builtins__','__spec__','__loader__','__cached__','__doc__','__package__','__name__','__file__','__annotations__'],InFunc=False):
+    env={'__name__':[],'__file__':[]}
+    stacks=inspect.stack()
+    max=len(stacks)
+    for ii in range(1,max):
+        name=sys._getframe(ii).f_code.co_name
+        env['__name__'].append(name)
+        a=dict(inspect.getmembers(stacks[ii][0]))["f_globals"]
+        for i in a:
+            if i == '__file__': env['__file__'].append(a[i])
+            if i in ignores: continue
+            if ii <= 2:
+                env[i]=a[i]
+            else:
+                if i not in env: env[i]=a[i]
+        if InFunc:
+            b=dict(inspect.getmembers(stacks[ii][0]))["f_locals"]
+            for i in b:
+                if i in ignores: continue
+                if i not in env: env[i]=b[i]
+    return env
 
 def StdOut(msg):
     '''
@@ -161,8 +171,7 @@ def StdOut(msg):
             sys.stdout.write(msg)
         sys.stdout.flush()
     except:
-        sys.stderr.write('Wrong output data format\n')
-        sys.stderr.flush()
+        StdErr('Wrong output data format\n')
 
 def StdErr(msg):
     '''
@@ -1743,7 +1752,7 @@ class DICT(dict):
     # make dot dict
     __setattr__, __getattr__ = __setitem__, __getitem__
 
-def Dict(*inp,deepcopy=False,copy=False,**opt):
+def Dict(*inp,deepcopy=False,copy=False,ignore=[],**opt):
     '''
     Dictionary
     - Define
@@ -1752,6 +1761,7 @@ def Dict(*inp,deepcopy=False,copy=False,**opt):
     - Append
     support : Dict, list or tuple with 2 data, dict_items, Django request.data, request data, like path type list([('/a/b',2),('/a/c',3),...]), kDict
     '''
+    if not isinstance(ignore,list): ignore=[]
     src={}
     if len(inp) >= 1:
         if deepcopy or copy:
@@ -1763,6 +1773,7 @@ def Dict(*inp,deepcopy=False,copy=False,**opt):
         if len(src) > 0:
             tmp={}
             for ii in src:
+                if ii in ignore: continue
                 tmp[ii]=src[ii]
             src=tmp
     elif isinstance(src,dict):
@@ -1774,6 +1785,7 @@ def Dict(*inp,deepcopy=False,copy=False,**opt):
         for dest in inp[1:]:
             if not isinstance(dest,dict): continue
             for i in dest:
+                if i in ignore: continue
                 if i in src and isinstance(src[i],dict) and isinstance(dest[i],dict):
                     src[i]=Dict(src[i],dest[i])
                 else:
@@ -1786,6 +1798,7 @@ def Dict(*inp,deepcopy=False,copy=False,**opt):
         tmp={}
         for ii in src:
             if isinstance(ii,tuple) and len(ii) == 2:
+                if ii[0] in ignore: continue
                 if ii[0][0] == '/':
                     src_a=ii[0].split('/')[1:]
                     tt=tmp
@@ -1806,6 +1819,7 @@ def Dict(*inp,deepcopy=False,copy=False,**opt):
     #Update Extra option data
     if opt:
         for i in opt:
+            if i in ignore: continue
             if i in src and isinstance(src[i],dict) and isinstance(opt[i],dict):
                 src[i]=Dict(src[i],opt[i])
             else:
@@ -2166,12 +2180,7 @@ def ModLoad(inp,force=False,globalenv=Global(),unload=False,re_load=False):
                 except:
                     globalenv[name]=import_module('{}.{}'.format(module,class_name))
         else:
-            try:
-                globalenv[name]=import_module(module)
-            except:
-                err=ExceptMessage()
-                StdErr('---------------------------------------------------------\n{}---------------------------------------------------------\n'.format(err))
-                return 0,module
+            globalenv[name]=import_module(module)
         return wildcard,module # Loaded. So return wildcard information
     except AttributeError: # Try Loading looped Module/Class then ignore  or Wrong define
         return 0,module
@@ -3535,10 +3544,11 @@ def ping(host,**opts):
     log=opts.get('log',None)
     log_format=opts.get('log_format','.')
     alive_port=opts.get('alive_port')
+    support_hostname=opts.get('support_hostname',True)
     end_newline=opts.get('end_newline',opts.get('newline',opts.get('end','\n')))
     cancel_func=opts.get('cancel_func',opts.get('stop_func',opts.get('cancel',opts.get('stop',None))))
     if alive_port:
-        return True if IpV4(host,port=alive_port,support_hostname=opts.get('support_hostname',True)) else False
+        return True if IpV4(host,port=alive_port,support_hostname=support_hostname) else False
     good=False
     Time=TIME()
     gTime=TIME()
@@ -3774,7 +3784,7 @@ class WEB:
         elif Type(headers,'dict',data=True):
             req_data['headers']=headers
         if not IsNone(ip):
-            ip=IpV4(ip,out=str)
+            ip=IpV4(ip,out=str,support_hostname=True)
             chk_dest='{}'.format(ip)
             if req_data.get('verify',True):
                 host_url='http://{}'.format(ip)
@@ -3793,10 +3803,10 @@ class WEB:
         if IsNone(chk_dest):
             return False,'host_url or ip not found'
         if bmc:
-            if IpV4(chk_dest,bmc=True) is False:
+            if IpV4(chk_dest,bmc=True,support_hostname=True) is False:
                 return False,'The IP({}) is not BMC IP'.format(chk_dest)
         if ping and chk_dest:
-            ping_rc=ping(chk_dest,timeout_sec=3)
+            ping_rc=ping(chk_dest,timeout_sec=3,support_hostname=True)
             if not isinstance(ping_rc,bool) and ping_rc==0:
                 return 0,'Canceled'
             elif not ping_rc:
@@ -7613,6 +7623,18 @@ def Progress(symbol='.',**opts):
     if end_newline and local_printed:
         printf('',ignore_empty=False,caller_parent=1,no_intro=True,log=log,mode=mode)
 
+def GetOptValue(data,key,default=None,data_type=None,default_with_none=False):
+    # get key value in a dictionary 
+    if isinstance(data,dict):
+        if isinstance(key,str): key=[key]
+        for k in key: # Check all want keys in the dictionary
+            if k in data:
+                if default_with_none: # if None data then pass to next check
+                    if IsNone(data[k]): continue
+                if data_type: # if different type of data then pass to next check
+                    if not Type(data[k],data_type): continue
+                return data[k]
+    return default # not meet then default
 
 #if __name__ == "__main__":
 #    # Integer
