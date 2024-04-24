@@ -143,9 +143,9 @@ def Global(ignores=['__builtins__','__spec__','__loader__','__cached__','__doc__
     stacks=inspect.stack()
     max=len(stacks)
     for ii in range(1,max):
-        name=sys._getframe(ii).f_code.co_name
-        env['__name__'].append(name)
+        mod_name=sys._getframe(ii).f_code.co_name
         a=dict(inspect.getmembers(stacks[ii][0]))["f_globals"]
+        env['__name__'].append(mod_name)
         for i in a:
             if i == '__file__': env['__file__'].append(a[i])
             if i in ignores: continue
@@ -159,6 +159,21 @@ def Global(ignores=['__builtins__','__spec__','__loader__','__cached__','__doc__
                 if i in ignores: continue
                 if i not in env: env[i]=b[i]
     return env
+
+def SetGlobal(name,value,ignores=['__builtins__','__spec__','__loader__','__cached__','__doc__','__package__','__name__','__file__','__annotations__'],Append=False):
+    stacks=inspect.stack()
+    max=len(stacks)
+    if not isinstance(name,str) or not name or name in ignores: return False
+    for ii in range(1,max):
+        #mod_name=sys._getframe(ii).f_code.co_name
+        a=dict(inspect.getmembers(stacks[ii][0]))["f_globals"]
+        if name in a:
+            a[name]=value
+            return True
+    if Append:
+      dict(inspect.getmembers(stacks[1][0]))["f_globals"][name]=value
+      return True
+    return False
 
 def StdOut(msg):
     '''
@@ -6247,19 +6262,20 @@ def MkTemp(filename=None,suffix=None,split='-',opt='dry',base_dir=None,uniq=Fals
         return outfile(os.path.join(base_dir,rfilename),opt)
 
 def osversion(mode='upper'):
-    _platform=platform.system()
+    _p_system=platform.system()
     #64bit: platform.architecture()[0]
     mode='l' if IsSame(mode,'lower') else 'u'
 
     out={
-       'platform':_platform.lower() if mode == 'l' else _platform.upper(),
+       'platform':_p_system.lower() if mode == 'l' else _p_system.upper(),
+       'arch':'arm' if IsSame(platform.machine(),'aarch64') else 'x86_64',
        'name':None,
        'version':None,
        'ext':None,
        '64bit':sys.maxsize > 2**32,
        'code':None
     }
-    if 'Linux' == _platform:
+    if IsSame(_p_system,'Linux'):
         rt=rshell('''[ -f /etc/os-release ] && ( . /etc/os-release ; echo $ID)''')
         out['name']=rt[1].lower() if mode == 'l' else rt[1].upper()
         if IsIn(out['name'],('ubuntu','Raspbian','Fedora')):
@@ -6277,19 +6293,19 @@ def osversion(mode='upper'):
                         out['version']='{}.{}'.format(ii_a[0],ii_a[1])
                         out['ext']=ii_a[-1]
                         break
-    elif 'FreeBSD' == _platform:
-        out['name']=_platform.lower() if mode == 'l' else _platform.upper()
+    elif IsSame(_p_system,'FreeBSD'):
+        out['name']=_p_system.lower() if mode == 'l' else _p_system.upper()
         aa=platform.version()
         out['version']=aa.split()[1].split('-')[0]
         out['ext']=aa.split()[2]
-    elif 'Darwin' == _platform:
+    elif IsSame(_p_system,'Darwin'):
         out['name']='osx' if mode == 'l' else 'OSX'
         out['version']=platform.mac_ver()
-    elif 'Windows' == _platform:
-        out['name']=_platform.lower() if mode == 'l' else _platform.upper()
+    elif IsSame(_p_system,'Windows'):
+        out['name']=_p_system.lower() if mode == 'l' else _p_system.upper()
         out['version']=platform.win32_ver()()
     else:
-        out['name']=_platform.lower() if mode == 'l' else _platform.upper()
+        out['name']=_p_system.lower() if mode == 'l' else _p_system.upper()
     return out
 
 def Strip(src,mode='all',sym='whitespace'):
