@@ -138,14 +138,60 @@ class PRINTED:
 
 printf_newline_info=PRINTED()
 
-def Global(ignores=['__builtins__','__spec__','__loader__','__cached__','__doc__','__package__','__name__','__file__','__annotations__'],InFunc=False):
+def Global_bak(loc=0,ignores=['__builtins__','__spec__','__loader__','__cached__','__doc__','__package__','__name__','__file__','__annotations__'],InFunc=False):
     env={'__name__':[],'__file__':[]}
     stacks=inspect.stack()
-    max=len(stacks)
-    for ii in range(1,max):
-        mod_name=sys._getframe(ii).f_code.co_name
-        a=dict(inspect.getmembers(stacks[ii][0]))["f_globals"]
+    max_n=len(stacks)
+    abs_loc=abs(loc)
+    if loc != 0 and 0 < max_n - abs_loc < max_n:
+        mod_name=sys._getframe(loc).f_code.co_name
+        a=dict(inspect.getmembers(stacks[loc][0]))["f_globals"]
         env['__name__'].append(mod_name)
+        for i in a:
+            if i == '__file__': env['__file__'].append(a[i])
+            if i in ignores: continue
+            if ii <= 2:
+                env[i]=a[i]
+            else:
+                if i not in env: env[i]=a[i]
+        if InFunc:
+            b=dict(inspect.getmembers(stacks[loc][0]))["f_locals"]
+            for i in b:
+                if i in ignores: continue
+                if i not in env: env[i]=b[i]
+    else:
+        for ii in range(1,max_n):
+            mod_name=sys._getframe(ii).f_code.co_name
+            a=dict(inspect.getmembers(stacks[ii][0]))["f_globals"]
+            env['__name__'].append(mod_name)
+            for i in a:
+                if i == '__file__': env['__file__'].append(a[i])
+                if i in ignores: continue
+                if ii <= 2:
+                    env[i]=a[i]
+                else:
+                    if i not in env: env[i]=a[i]
+            if InFunc:
+                b=dict(inspect.getmembers(stacks[ii][0]))["f_locals"]
+                for i in b:
+                    if i in ignores: continue
+                    if i not in env: env[i]=b[i]
+    return env
+
+def GetGlobal(key=None,loc=0,ignores=['__builtins__','__spec__','__loader__','__cached__','__doc__','__package__','__name__','__file__','__annotations__'],InFunc=False,default=None):
+    # overwriting from mine to my TOP
+    # It it need backorder?
+    env={'__name__':[],'__file__':[]}
+    stacks=inspect.stack()
+    max_n=len(stacks)
+    #Finding max_n for backword
+    #for ii in range(1,len(stack)):
+    #    mod_name=sys._getframe(ii).f_code.co_name
+    #    if mod_name=='<module>':break
+    #max_n=ii+1
+    abs_loc=abs(loc)
+    def GetParameters(env,ii,stacks):
+        a=dict(inspect.getmembers(stacks[ii][0]))["f_globals"]
         for i in a:
             if i == '__file__': env['__file__'].append(a[i])
             if i in ignores: continue
@@ -158,22 +204,64 @@ def Global(ignores=['__builtins__','__spec__','__loader__','__cached__','__doc__
             for i in b:
                 if i in ignores: continue
                 if i not in env: env[i]=b[i]
+
+    if loc != 0 and 0 < max_n - abs_loc < max_n: # Read special point's variables
+        mod_name=sys._getframe(loc).f_code.co_name
+        env['__name__'].append(mod_name)
+        GetParameters(env,loc,stacks)
+    else:
+        for ii in range(1,max_n): # Read All available's variables
+            mod_name=sys._getframe(ii).f_code.co_name
+            env['__name__'].append(mod_name)
+            GetParameters(env,ii,stacks)
+            if mod_name == '<module>': break # My App's Top then break
+    if key:
+        return Get(env,key,default=default)
     return env
 
-def SetGlobal(name,value,ignores=['__builtins__','__spec__','__loader__','__cached__','__doc__','__package__','__name__','__file__','__annotations__'],Append=False):
-    stacks=inspect.stack()
-    max=len(stacks)
+def SetGlobal(name,value,ignores=['__builtins__','__spec__','__loader__','__cached__','__doc__','__package__','__name__','__file__','__annotations__'],loc=0,Append=False,Top=False):
+    # dict case : name='/a/b/c', value=value
+    # single case: name='a', value=value
     if not isinstance(name,str) or not name or name in ignores: return False
-    for ii in range(1,max):
-        #mod_name=sys._getframe(ii).f_code.co_name
-        a=dict(inspect.getmembers(stacks[ii][0]))["f_globals"]
-        if name in a:
-            a[name]=value
-            return True
-    if Append:
-      dict(inspect.getmembers(stacks[1][0]))["f_globals"][name]=value
-      return True
-    return False
+    stacks=inspect.stack()
+    for ii in range(1,len(stack)):
+        if sys._getframe(ii).f_code.co_name == '<module>':break #Find my Top 
+    max_n=ii
+    name_a=name.split('/')
+    if name_a[0] == '': name_a=name_a[1:] # /ab/cd/ef case, ab will first
+    name_n=name_a[0]
+    def update_data(a,name_a,name_n,Append):
+        if name_n not in a:
+            if not Append: return False
+        for nn in name_a[:-1]:
+            if nn not in a:
+                if not Append: return False
+                a[nn]={}
+            if not isinstance(a[nn],dict): return False
+            a=a[nn]
+        if name_a[-1] not in a:
+            if not Append: return False
+        a[name_a[-1]]=value #Replace at exist
+        return True
+    if loc != 0 and 0 < max_n - abs_loc < max_n: # Set special point's variables
+        a=dict(inspect.getmembers(stacks[loc][0]))["f_globals"]
+        return update_data(a,name_a,name_n,Append)
+    else:
+        for ii in range(max_n,0,-1):
+            a=dict(inspect.getmembers(stacks[ii][0]))["f_globals"]
+            if name_n in a:
+                for nn in name_a[:-1]: #check dict
+                    if isinstance(a[nn],dict):
+                        a=a[nn]
+                    else:
+                        break # exit dict checking
+                if name_a[-1] in a: # check variable
+                    a[name_a[-1]]=value #update data
+                    return True
+            if Top: break #Top then just one time at Top
+        #If not replaced variable then adding at my Top
+        return update_data(dict(inspect.getmembers(stacks[max_n][0]))["f_globals"],name_a,name_n,Append)
+    return False #Can not add (Something error)
 
 def StdOut(msg):
     '''
@@ -1515,7 +1603,7 @@ def IsFunction(src=None,find='_#_',builtin=False):
     '''
     if IsNone(src):
         if isinstance(find,str) and find != '_#_':
-            find=Global().get(find)
+            find=GetGlobal().get(find)
         return inspect.isfunction(find)
     else:
         if builtin:
@@ -2122,7 +2210,7 @@ def ModName(src):
     return rt,module_name,alias_name,class_name,version,symbol
 
 #def ModLoad(inp,force=False,globalenv=dict(inspect.getmembers(inspect.stack()[1][0]))["f_globals"],unload=False,re_load=False):
-def ModLoad(inp,force=False,globalenv=Global(),unload=False,re_load=False):
+def ModLoad(inp,force=False,globalenv=GetGlobal(),unload=False,re_load=False):
     '''
     Load python module
     0: Loaded
@@ -6263,12 +6351,14 @@ def MkTemp(filename=None,suffix=None,split='-',opt='dry',base_dir=None,uniq=Fals
 
 def osversion(mode='upper'):
     _p_system=platform.system()
+    _p_machine=platform.machine()
+    if IsSame(_p_machine,'aarch64'): _p_machine='arm'
     #64bit: platform.architecture()[0]
     mode='l' if IsSame(mode,'lower') else 'u'
 
     out={
        'platform':_p_system.lower() if mode == 'l' else _p_system.upper(),
-       'arch':'arm' if IsSame(platform.machine(),'aarch64') else 'x86_64',
+       'arch':_p_machine.lower() if mode == 'l' else _p_machine.upper(),
        'name':None,
        'version':None,
        'ext':None,
