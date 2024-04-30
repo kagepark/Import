@@ -179,26 +179,18 @@ def Global_bak(loc=0,ignores=['__builtins__','__spec__','__loader__','__cached__
     return env
 
 def GetGlobal(key=None,loc=0,ignores=['__builtins__','__spec__','__loader__','__cached__','__doc__','__package__','__name__','__file__','__annotations__'],InFunc=False,default=None):
-    # overwriting from mine to my TOP
+    # overwriting Top data to my script
     # It it need backorder?
     env={'__name__':[],'__file__':[]}
     stacks=inspect.stack()
     max_n=len(stacks)
-    #Finding max_n for backword
-    #for ii in range(1,len(stack)):
-    #    mod_name=sys._getframe(ii).f_code.co_name
-    #    if mod_name=='<module>':break
-    #max_n=ii+1
     abs_loc=abs(loc)
-    def GetParameters(env,ii,stacks):
+    def GetParameters(env,ii,stacks,InFunc):
         a=dict(inspect.getmembers(stacks[ii][0]))["f_globals"]
         for i in a:
             if i == '__file__': env['__file__'].append(a[i])
             if i in ignores: continue
-            if ii <= 2:
-                env[i]=a[i]
-            else:
-                if i not in env: env[i]=a[i]
+            env[i]=a[i] # overwriting 
         if InFunc:
             b=dict(inspect.getmembers(stacks[ii][0]))["f_locals"]
             for i in b:
@@ -208,7 +200,64 @@ def GetGlobal(key=None,loc=0,ignores=['__builtins__','__spec__','__loader__','__
     if loc != 0 and 0 < max_n - abs_loc < max_n: # Read special point's variables
         mod_name=sys._getframe(loc).f_code.co_name
         env['__name__'].append(mod_name)
-        GetParameters(env,loc,stacks)
+        GetParameters(env,loc,stacks,InFunc)
+    else:
+        for ii in range(1,max_n): # Read All available's variables
+            mod_name=sys._getframe(ii).f_code.co_name
+            env['__name__'].append(mod_name)
+            GetParameters(env,ii,stacks,InFunc)
+            if mod_name == '<module>': break # My App's Top then break
+    if key:
+        return env.get(key,default)
+    return env
+
+def SetGlobal(name,value,ignores=['__builtins__','__spec__','__loader__','__cached__','__doc__','__package__','__name__','__file__','__annotations__'],loc=0,Append=False,Top=False):
+    #Set at Top when not defined loc (0: not define)
+    #Top to my script
+    if not isinstance(name,str) or not name or name in ignores: return False
+    stacks=inspect.stack()
+    #max_n=len(stacks)
+    for ii in range(1,len(stacks)):
+        mod_name=sys._getframe(ii).f_code.co_name
+        if mod_name=='<module>':break
+    max_n=ii
+    if loc != 0 and 0 < max_n+1 - abs_loc <= max_n: # Set special point's variables
+        a=dict(inspect.getmembers(stacks[loc][0]))["f_globals"]
+        if name in a:
+            a[name]=value # Replace at exist
+            return True
+        if Append: #If not replaced variable then adding at my Top
+            dict(inspect.getmembers(stacks[loc][0]))["f_globals"][name]=value
+            return True
+    else:
+        for ii in range(max_n,0,-1):
+            a=dict(inspect.getmembers(stacks[ii][0]))["f_globals"]
+            if name in a:
+                a[name]=value # Replace at exist
+                return True
+            if Top: break
+        if Append: #If not replaced variable then adding at my Top
+            dict(inspect.getmembers(stacks[max_n][0]))["f_globals"][name]=value
+            return True
+    return False #Can not add (Something error)
+
+def GetLocal(key=None,loc=0,ignores=['__builtins__','__spec__','__loader__','__cached__','__doc__','__package__','__name__','__file__','__annotations__'],default=None):
+    # overwriting Top data to my script
+    # It it need backorder?
+    env={'__name__':[],'__file__':[]}
+    stacks=inspect.stack()
+    max_n=len(stacks)
+    abs_loc=abs(loc)
+    def GetParameters(env,ii,stacks):
+        b=dict(inspect.getmembers(stacks[ii][0]))["f_locals"]
+        for i in b:
+            if i in ignores: continue
+            if i not in env: env[i]=b[i]
+
+    if loc != 0 and 0 < max_n - abs_loc < max_n: # Read special point's variables
+        mod_name=sys._getframe(loc).f_code.co_name
+        env['__name__'].append(mod_name)
+        GetParameters(env,loc,stacks,InFunc)
     else:
         for ii in range(1,max_n): # Read All available's variables
             mod_name=sys._getframe(ii).f_code.co_name
@@ -216,52 +265,8 @@ def GetGlobal(key=None,loc=0,ignores=['__builtins__','__spec__','__loader__','__
             GetParameters(env,ii,stacks)
             if mod_name == '<module>': break # My App's Top then break
     if key:
-        return Get(env,key,default=default)
+        return env.get(key,default)
     return env
-
-def SetGlobal(name,value,ignores=['__builtins__','__spec__','__loader__','__cached__','__doc__','__package__','__name__','__file__','__annotations__'],loc=0,Append=False,Top=False):
-    # dict case : name='/a/b/c', value=value
-    # single case: name='a', value=value
-    if not isinstance(name,str) or not name or name in ignores: return False
-    stacks=inspect.stack()
-    for ii in range(1,len(stack)):
-        if sys._getframe(ii).f_code.co_name == '<module>':break #Find my Top 
-    max_n=ii
-    name_a=name.split('/')
-    if name_a[0] == '': name_a=name_a[1:] # /ab/cd/ef case, ab will first
-    name_n=name_a[0]
-    def update_data(a,name_a,name_n,Append):
-        if name_n not in a:
-            if not Append: return False
-        for nn in name_a[:-1]:
-            if nn not in a:
-                if not Append: return False
-                a[nn]={}
-            if not isinstance(a[nn],dict): return False
-            a=a[nn]
-        if name_a[-1] not in a:
-            if not Append: return False
-        a[name_a[-1]]=value #Replace at exist
-        return True
-    if loc != 0 and 0 < max_n - abs_loc < max_n: # Set special point's variables
-        a=dict(inspect.getmembers(stacks[loc][0]))["f_globals"]
-        return update_data(a,name_a,name_n,Append)
-    else:
-        for ii in range(max_n,0,-1):
-            a=dict(inspect.getmembers(stacks[ii][0]))["f_globals"]
-            if name_n in a:
-                for nn in name_a[:-1]: #check dict
-                    if isinstance(a[nn],dict):
-                        a=a[nn]
-                    else:
-                        break # exit dict checking
-                if name_a[-1] in a: # check variable
-                    a[name_a[-1]]=value #update data
-                    return True
-            if Top: break #Top then just one time at Top
-        #If not replaced variable then adding at my Top
-        return update_data(dict(inspect.getmembers(stacks[max_n][0]))["f_globals"],name_a,name_n,Append)
-    return False #Can not add (Something error)
 
 def StdOut(msg):
     '''
@@ -3218,7 +3223,7 @@ def Get(*inps,**opts):
                         else:
                             rt.append(Variable(nidx,obj))
                 return OutFormat(rt,out=out,default=default,org=obj,peel=peel,strip=strip)
-    elif obj_type in ('instance','classobj','module'):
+    elif obj_type in ('instance','classobj','module','Model'):
         if Type(idx,str) and idx.lower() in ['func','function','functions','funclist','func_list','list']:
             return FunctionList(obj)
         elif idx_type in ['list','tuple']: #OR Index
