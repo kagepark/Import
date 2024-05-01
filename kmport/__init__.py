@@ -178,95 +178,129 @@ def Global_bak(loc=0,ignores=['__builtins__','__spec__','__loader__','__cached__
                     if i not in env: env[i]=b[i]
     return env
 
-def GetGlobal(key=None,loc=0,ignores=['__builtins__','__spec__','__loader__','__cached__','__doc__','__package__','__name__','__file__','__annotations__'],InFunc=False,default=None):
+def GetGlobal(key=None,loc=None,ignores=[],default=None,_type_='global',UptoTop=False):
+    _ignores_=['__builtins__','__spec__','__loader__','__cached__','__doc__','__package__','__name__','__file__','__annotations__']
+    if isinstance(ignores,list) and ignores: _ignores_=_ignores_+ignores
     # overwriting Top data to my script
     # It it need backorder?
     env={'__name__':[],'__file__':[]}
     stacks=inspect.stack()
     max_n=len(stacks)
-    abs_loc=abs(loc)
-    def GetParameters(env,ii,stacks,InFunc):
-        a=dict(inspect.getmembers(stacks[ii][0]))["f_globals"]
-        for i in a:
-            if i == '__file__': env['__file__'].append(a[i])
-            if i in ignores: continue
-            env[i]=a[i] # overwriting 
-        if InFunc:
-            b=dict(inspect.getmembers(stacks[ii][0]))["f_locals"]
-            for i in b:
-                if i in ignores: continue
-                if i not in env: env[i]=b[i]
-
-    if loc != 0 and 0 < max_n - abs_loc < max_n: # Read special point's variables
+    if IsIn(loc,['top']): loc=-1
+    elif IsIn(loc,['bottom']): loc=0
+    def GetParameters(env,ii,stacks,key=None,UptoTop=False):
+        if _type_ == 'global': #global
+            a=dict(inspect.getmembers(stacks[ii][0]))["f_globals"]
+        else: # local
+            a=dict(inspect.getmembers(stacks[ii][0]))["f_locals"]
+        if key and not UptoTop:
+            return a.get(key,{'none'})
+        else:
+            for i in a:
+                if i in _ignores_: continue
+                if i == '__file__': env['__file__'].append(a[i])
+                if UptoTop or i not in env: 
+                    env[i]=a[i] 
+            return {'none'}
+    if IsInt(loc): # Read special point's variables
+        loc=int(loc)
+        if loc >= 0:
+            loc=loc+1 if loc < max_n-1 else max_n
+        else:
+            loc = 1 if abs(loc) >= max_n else max_n + loc
         mod_name=sys._getframe(loc).f_code.co_name
+        _a_=GetParameters(env,loc,stacks,key)
+        if key:
+            if _a_ != {'none'}: return _a_
+            return default
         env['__name__'].append(mod_name)
-        GetParameters(env,loc,stacks,InFunc)
     else:
-        for ii in range(1,max_n): # Read All available's variables
+        if isinstance(loc,str) and ':' in loc:
+            loc_a=loc.split(':')
+            start=int(loc_a[0]) if IsInt(loc_a[0]) else 0
+            end=int(loc_a[1]) if IsInt(loc_a[1]) else max_n
+            if abs(start) >= max_n-1:
+                start=1 if start<=0 else max_n-1
+            else:
+                if start >= 0 : start=start+1
+            if abs(end) >= max_n-1:
+                if end>0: end=max_n
+        else:
+            start=1
+            end=max_n
+        for ii in range(start,end): # Read All available's variables
             mod_name=sys._getframe(ii).f_code.co_name
-            env['__name__'].append(mod_name)
-            GetParameters(env,ii,stacks,InFunc)
-            if mod_name == '<module>': break # My App's Top then break
+            if key and not UptoTop: # found key
+                _a_=GetParameters(env,ii,stacks,key)
+                if _a_ != {'none'}: return _a_
+            else:
+                env['__name__'].append(mod_name)
+                GetParameters(env,ii,stacks,UptoTop=UptoTop)
+            #if mod_name == '<module>': break # My App's Top then break
     if key:
-        return env.get(key,default)
+        if UptoTop:
+            return env.get(key,default) #over write then here
+        return default #not found key
     return env
 
-def SetGlobal(name,value,ignores=['__builtins__','__spec__','__loader__','__cached__','__doc__','__package__','__name__','__file__','__annotations__'],loc=0,Append=False,Top=False):
-    #Set at Top when not defined loc (0: not define)
-    #Top to my script
-    if not isinstance(name,str) or not name or name in ignores: return False
+def SetGlobal(name,value,ignores=[],loc=None,Append=True,_type_='global',Top=True):
+    _ignores_=['__builtins__','__spec__','__loader__','__cached__','__doc__','__package__','__name__','__file__','__annotations__']
+    if isinstance(ignores,list) and ignores: _ignores_=_ignores_+ignores
+    if Top: Append=True
     stacks=inspect.stack()
-    #max_n=len(stacks)
-    for ii in range(1,len(stacks)):
-        mod_name=sys._getframe(ii).f_code.co_name
-        if mod_name=='<module>':break
-    max_n=ii
-    if loc != 0 and 0 < max_n+1 - abs_loc <= max_n: # Set special point's variables
-        a=dict(inspect.getmembers(stacks[loc][0]))["f_globals"]
-        if name in a:
-            a[name]=value # Replace at exist
-            return True
+    max_n=len(stacks)
+    if IsIn(loc,['top']): loc=-1
+    elif IsIn(loc,['bottom']): loc=0
+    if IsInt(loc): # Read special point's variables
+        loc=int(loc)
+        if loc >= 0:
+            loc=loc+1 if loc < max_n-1 else max_n
+        else:
+            loc = 1 if abs(loc) >= max_n else max_n + loc
+        if _type_ == 'global': #global
+            a=dict(inspect.getmembers(stacks[loc][0]))["f_globals"]
+        else: # local
+            a=dict(inspect.getmembers(stacks[loc][0]))["f_locals"]
+        if Top:
+            if name not in a:
+                if _type_ == 'global': #global
+                    a=dict(inspect.getmembers(stacks[-1][0]))["f_globals"]
+                else: # local
+                    a=dict(inspect.getmembers(stacks[-1][0]))["f_locals"]
         if Append: #If not replaced variable then adding at my Top
-            dict(inspect.getmembers(stacks[loc][0]))["f_globals"][name]=value
+            a[name]=value
             return True
-    else:
-        for ii in range(max_n,0,-1):
-            a=dict(inspect.getmembers(stacks[ii][0]))["f_globals"]
+        else:
             if name in a:
-                a[name]=value # Replace at exist
+                a[name]=value
                 return True
-            if Top: break
-        if Append: #If not replaced variable then adding at my Top
-            dict(inspect.getmembers(stacks[max_n][0]))["f_globals"][name]=value
+    else:
+        if not Top:
+            if isinstance(loc,str) and '-' in loc:
+                loc_a=loc.split('-')
+                start=int(loc_a[0])+1 if IsInt(loc_a[0]) else 1
+                if start >= max_n -1: start=max_n-1
+                end=int(loc_a[1]) if IsInt(loc_a[1]) else max_n
+                if end >= max_n: end=max_n
+            else:
+                start=1
+                end=max_n
+            for ii in range(start,end): # Read All available's variables
+                if _type_ == 'global': #global
+                    a=dict(inspect.getmembers(stacks[loc][0]))["f_globals"]
+                else: # local
+                    a=dict(inspect.getmembers(stacks[loc][0]))["f_locals"]
+                if name in a:
+                    a[name]=value
+                    return True
+        if Append:
+            if _type_ == 'global': #global
+                a=dict(inspect.getmembers(stacks[-1][0]))["f_globals"]
+            else: # local
+                a=dict(inspect.getmembers(stacks[-1][0]))["f_locals"]
+            a[name]=value
             return True
     return False #Can not add (Something error)
-
-def GetLocal(key=None,loc=0,ignores=['__builtins__','__spec__','__loader__','__cached__','__doc__','__package__','__name__','__file__','__annotations__'],default=None):
-    # overwriting Top data to my script
-    # It it need backorder?
-    env={'__name__':[],'__file__':[]}
-    stacks=inspect.stack()
-    max_n=len(stacks)
-    abs_loc=abs(loc)
-    def GetParameters(env,ii,stacks):
-        b=dict(inspect.getmembers(stacks[ii][0]))["f_locals"]
-        for i in b:
-            if i in ignores: continue
-            if i not in env: env[i]=b[i]
-
-    if loc != 0 and 0 < max_n - abs_loc < max_n: # Read special point's variables
-        mod_name=sys._getframe(loc).f_code.co_name
-        env['__name__'].append(mod_name)
-        GetParameters(env,loc,stacks,InFunc)
-    else:
-        for ii in range(1,max_n): # Read All available's variables
-            mod_name=sys._getframe(ii).f_code.co_name
-            env['__name__'].append(mod_name)
-            GetParameters(env,ii,stacks)
-            if mod_name == '<module>': break # My App's Top then break
-    if key:
-        return env.get(key,default)
-    return env
 
 def StdOut(msg):
     '''
