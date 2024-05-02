@@ -262,18 +262,20 @@ def SetGlobal(name,value,ignores=[],loc=None,Append=True,_type_='global',Top=Tru
         else: # local
             a=dict(inspect.getmembers(stacks[loc][0]))["f_locals"]
         if Top:
-            if name not in a:
+            #if name not in a:
+            if Get(a,name,default={'none'}) == {'none'}:
                 if _type_ == 'global': #global
                     a=dict(inspect.getmembers(stacks[-1][0]))["f_globals"]
                 else: # local
                     a=dict(inspect.getmembers(stacks[-1][0]))["f_locals"]
-        if Append: #If not replaced variable then adding at my Top
-            a[name]=value
-            return True
-        else:
-            if name in a:
-                a[name]=value
-                return True
+        return Set(a,name,value,force=Append)
+        #if Append: #If not replaced variable then adding at my Top
+        #    a[name]=value
+        #    return True
+        #else:
+        #    if name in a:
+        #        a[name]=value
+        #        return True
     else:
         if not Top:
             if isinstance(loc,str) and '-' in loc:
@@ -290,16 +292,19 @@ def SetGlobal(name,value,ignores=[],loc=None,Append=True,_type_='global',Top=Tru
                     a=dict(inspect.getmembers(stacks[loc][0]))["f_globals"]
                 else: # local
                     a=dict(inspect.getmembers(stacks[loc][0]))["f_locals"]
-                if name in a:
-                    a[name]=value
-                    return True
+                #if name in a:
+                #    a[name]=value
+                #    return True
+                if Get(a,name,default={'none'}) != {'none'}:
+                    return Set(a,name,value)
         if Append:
             if _type_ == 'global': #global
                 a=dict(inspect.getmembers(stacks[-1][0]))["f_globals"]
             else: # local
                 a=dict(inspect.getmembers(stacks[-1][0]))["f_locals"]
-            a[name]=value
-            return True
+            return Set(a,name,value,force=True)
+            #a[name]=value
+            #return True
     return False #Can not add (Something error)
 
 def StdOut(msg):
@@ -3320,22 +3325,14 @@ def Get(*inps,**opts):
                 elif method=='FILE':
                     rt=obj.FILES.getlist(nkey,default)
                     if not IsNone(rt):
-                        #return OutFormat(rt,out='raw',peel=peel,strip=strip,default=default)
                         return OutFormat(rt,out=out,peel=peel,strip=strip,default=default)
-                    #if not IsNone(rt): return rt
-                    #rt=obj.FILES.get(nkey,default)
-                    #if not IsNone(rt): return rt
                     return Default(obj,default)
                 elif method=='POST':
                     rt=obj.FILES.getlist(nkey)
-                    #rt2=obj.FILES.get(nkey)
                     if not IsNone(rt):
-                        #return OutFormat(rt,out='raw',peel=peel,strip=strip,default=default)
                         return OutFormat(rt,out=out,peel=peel,strip=strip,default=default)
                     rt=obj.POST.getlist(nkey)
-                    #rt=obj.POST.get(nkey)
                     if not IsNone(rt):
-                        #return OutFormat(rt,out='raw',peel=peel,strip=strip,default=default)
                         return OutFormat(rt,out=out,peel=peel,strip=strip,default=default)
                     return Default(obj,default)
             if idx_type == 'str':
@@ -3355,6 +3352,45 @@ def Get(*inps,**opts):
         return Get(obj.Get(),idx,default,err) 
     return OutFormat([],out=out,default=default,org=obj,peel=peel,strip=strip)
 
+def Set(obj,key,value,**opts):
+    force=opts.get('force',opts.get('append'))
+    insert=opts.get('insert') # for list
+    default=opts.get('default')
+    if isinstance(obj,dict):
+        if isinstance(key,str):
+            key_a=key.split('/')
+        else:
+            key_a=[key]
+        if key_a[0] == '':
+            key_a=key_a[1:]
+        for kk in key_a[:-1]:
+            if kk not in obj:
+                if not force: return default
+                obj[kk]={} # create/insert
+            obj=obj[kk]
+        obj[key_a[-1]]=value # replace or put
+        return True
+    elif isinstance(obj,list):
+        if isinstance(key,int):
+            if abs(key) < len(obj):
+                if insert:
+                    obj=obj[:insert]+[value]+obj[insert:] # insert
+                else:
+                    obj[key]=value # replace
+            else:
+                if not force: return default
+                if key < 0:
+                    if insert:
+                        obj=[value]+obj # insert
+                    else:
+                        obj[0]=value # replace
+                else:
+                    if insert:
+                        obj.append(value) # insert
+                    else:
+                        obj[-1]=value # replace
+            return True
+    return default
 
 def TryCode(code,default=False,_return_=True):
     '''
