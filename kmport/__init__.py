@@ -1891,7 +1891,7 @@ class DICT(dict):
                 return self.get(idx,Default(self,default))
         elif ok is None: #Path Index
             for i in nidx:
-                if i not in self: return Default(self,default)
+                if i not in self or not isinstance(self[i],dict): return Default(self,default)
                 self=self[i]
             return self
         return Default(self,default)
