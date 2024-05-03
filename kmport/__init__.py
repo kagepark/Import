@@ -1890,10 +1890,10 @@ class DICT(dict):
                         return DICT(dict((obj_items[ix],)))
                 return self.get(idx,Default(self,default))
         elif ok is None: #Path Index
-            for i in nidx:
+            for i in nidx[:-1]:
                 if i not in self or not isinstance(self[i],dict): return Default(self,default)
                 self=self[i]
-            return self
+            return self[nidx[-1]] if isinstance(self,dict) and nidx[-1] in self else Default(self,default)
         return Default(self,default)
 
     # make dot dict
@@ -3212,7 +3212,6 @@ def Get(*inps,**opts):
         obj_type='function'
     else:
         obj_type=TypeName(obj)
-        
     if ok and obj_type in ('list','tuple','str','bytes'):
         if idx_type == 'tuple':
             ss=_obj_max_idx_(obj,Int(nidx[0]),err)
@@ -4504,7 +4503,10 @@ def sprintf(string,*inps,**opts):
                         return False,"""Mismatched input (tuple/list) number (require:{}, input:{})""".format(len(tmp),len(inps))
                 elif opts:
                     if len(tmp) == len(opts):
-                        string=string.format(*opts.values())
+                        try:
+                            string=string.format(*opts.values())
+                        except:
+                            return False,"""STRING FORMAT ISSUE:\n{}""".format(string)
                     elif error:
                         return False,"""Mismatched input (tuple/list) number (require:{}, input:{})""".format(len(tmp),len(opts))
             elif i >= 4:
