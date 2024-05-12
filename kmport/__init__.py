@@ -28,6 +28,7 @@ import pprint
 import pickle
 import inspect
 import getpass
+import warnings
 import datetime
 import platform
 import traceback
@@ -2254,7 +2255,7 @@ def ModName(src):
     return rt,module_name,alias_name,class_name,version,symbol
 
 #def ModLoad(inp,force=False,globalenv=dict(inspect.getmembers(inspect.stack()[1][0]))["f_globals"],unload=False,re_load=False):
-def ModLoad(inp,force=False,globalenv=GetGlobal(),unload=False,re_load=False):
+def ModLoad(inp,force=False,globalenv=GetGlobal(),unload=False,re_load=False,ignore_warning=False):
     '''
     Load python module
     0: Loaded
@@ -2318,6 +2319,8 @@ def ModLoad(inp,force=False,globalenv=GetGlobal(),unload=False,re_load=False):
 #            print('*** Wrong information')
 #            return 0,module
     try:
+        if ignore_warning:
+            warnings.simplefilter("ignore")
         if class_name:
             if class_name == '*':
                 wildcard=import_module(module)
@@ -2328,6 +2331,7 @@ def ModLoad(inp,force=False,globalenv=GetGlobal(),unload=False,re_load=False):
                     globalenv[name]=import_module('{}.{}'.format(module,class_name))
         else:
             globalenv[name]=import_module(module)
+        #warnings.simplefilter("default")
         return wildcard,module # Loaded. So return wildcard information
     except AttributeError: # Try Loading looped Module/Class then ignore  or Wrong define
         return 0,module
@@ -2367,6 +2371,7 @@ def Import(*inps,**opts):
     #install_account=opts.get('install_account','--user')
     install_account=opts.get('install_account','') # '--user','user','myaccount','account',myself then install at my local account
     install_name=opts.get('install_name')
+    ignore_warning=opts.get('ignore_warning',False)
 
     #Append Module Path
     virtual_env=os.environ.get('VIRTUAL_ENV')
@@ -2429,7 +2434,7 @@ def Import(*inps,**opts):
             inp=ifile_a[0]
             if ipath not in sys.path:
                 sys.path=[ipath]+sys.path
-            loaded,module=ModLoad(inp,force=force,globalenv=globalenv,unload=unload,re_load=re_load)
+            loaded,module=ModLoad(inp,force=force,globalenv=globalenv,unload=unload,re_load=re_load,ignore_warning=ignore_warning)
             continue
         else: # Check Local File
             inp_a=inp.split()
