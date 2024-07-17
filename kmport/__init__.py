@@ -3729,6 +3729,8 @@ def ping(host,**opts):
     support_hostname=opts.get('support_hostname',True)
     end_newline=opts.get('end_newline',opts.get('newline',opts.get('end','\n')))
     cancel_func=opts.get('cancel_func',opts.get('stop_func',opts.get('cancel',opts.get('stop',None))))
+    cancel_args=opts.get('cancel_args',opts.get('stop_args',opts.get('cancel_arg',opts.get('stop_arg',{}))))
+    if not isinstance(cancel_args,dict): cancel_args={}
     if alive_port:
         return True if IpV4(host,port=alive_port,support_hostname=support_hostname) else False
     good=False
@@ -3739,7 +3741,7 @@ def ping(host,**opts):
     local_printed=False
     i=0
     while True:
-       if IsBreak(cancel_func):
+       if IsBreak(cancel_func,**cancel_args):
           printf('- ping({}) - Canceled/Stopped ping by cancel signal'.format(host),first_newline=True,log=log,dsp=dspi)
           break
        rc=_ping_(host,timeout=1,size=64,log_format=log_format)
@@ -5717,8 +5719,9 @@ def FeedFunc(obj,*inps,**opts):
             try:
                 obj=getattr(mymod,obj,None)
             except:
-                StdErr('Function name "{}" not found in the module\n'.format(obj))
-                return False
+#                StdErr('Function name "{}" not found in the module\n'.format(obj))
+                return False,'Function name "{}" not found in the module\n'.format(obj)
+    e='Wrong Object type'
     if Type(obj,('function','method','builtin_function_or_method','type','int','str','list','dict')):
         fcargs=FunctionArgs(obj,mode='detail',default={})
         ninps=[]
@@ -5742,8 +5745,8 @@ def FeedFunc(obj,*inps,**opts):
                     if i in opts:
                         ninps.append(opts.pop(i))
                     else:
-                        StdErr('input parameter "{}" not found\n'.format(i))
-                        return False
+#                        StdErr('input parameter "{}" not found\n'.format(i))
+                        return False,'input parameter "{}" not found\n'.format(i)
         if 'varargs' in fcargs:
             ninps=ninps+list(inps[idx:])
         if 'defaults' in fcargs:
@@ -5757,23 +5760,23 @@ def FeedFunc(obj,*inps,**opts):
         #Run function with found arguments
         if ninps and nopts:
             if Type(obj,('int','str')):
-                return obj(ninps[0],**nopts)
+                return True,obj(ninps[0],**nopts)
             else:
-                return obj(*ninps,**nopts)
+                return True,obj(*ninps,**nopts)
         elif ninps:
             if Type(obj,('int','str','list','dict')):
-                return obj(ninps[0])
+                return True,obj(ninps[0])
             else:
-                return obj(*ninps)
+                return True,obj(*ninps)
         elif nopts:
-            return obj(**nopts)
+            return True,obj(**nopts)
         else:
             try:
-                return obj()
+                return True,obj()
             except:
                 e=ExceptMessage()
-                StdErr(e)
-    return False
+                #StdErr(e)
+    return False,e
 
 def printf(*msg,**opts):
     '''
@@ -6534,7 +6537,8 @@ def IsTrue(condition,requirements=None,shell=False,**opts):
     condition_type=type(condition).__name__
     if IsFunction(condition,builtin=False):
         opts['parent']=3 if 'parent' not in opts else opts['parent']+2
-        if FeedFunc(condition,**opts):
+        ok,condout=FeedFunc(condition,**opts)
+        if ok and condout:
             return True
     elif condition_type == 'str':
         try:
