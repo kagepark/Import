@@ -3725,6 +3725,11 @@ def ping(host,**opts):
     lost_mon=opts.get('lost_mon',False)
     log=opts.get('log',None)
     log_format=opts.get('log_format','.')
+    #. : print dot(.) during process
+    #ping : print linux command's ping log
+    #d : print dot(.) during process
+    #s : print dot(.) during process
+    #i : not print during process. just return result only
     alive_port=opts.get('alive_port')
     support_hostname=opts.get('support_hostname',True)
     end_newline=opts.get('end_newline',opts.get('newline',opts.get('end','\n')))
