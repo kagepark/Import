@@ -3944,9 +3944,13 @@ class WEB:
         json_data=opts.get('json',None) # dictionary format
         files=opts.get('files',None) # dictionary format
         request_url=opts.get('request_url',None)
-        dbg=opts.get('dbg',True)  # show debugging log
-        ping=opts.get('ping',False) # check ping to IP
+        dbg=opts.get('dbg',False)  # show debugging log
+        log=opts.get('log') 
+        chk_ping=opts.get('ping',False) # check ping to IP
         timeout=opts.get('timeout',None) # request timeout
+        command_timeout=opts.get('command_timeout',None)
+        ping_good=Int(opts.get('ping_good'),10)
+        if IsInt(command_timeout): chk_ping=True
         req_data={}
         chk_dest=None
         if isinstance(timeout,int): req_data['timeout']=timeout
@@ -3991,15 +3995,34 @@ class WEB:
                     req_data['verify']=False
         if IsNone(chk_dest):
             return False,'host_url or ip not found'
-        if bmc:
-            if IpV4(chk_dest,bmc=True,support_hostname=True) is False:
-                return False,'The IP({}) is not BMC IP'.format(chk_dest)
-        if ping and chk_dest:
-            ping_rc=ping(chk_dest,timeout_sec=3,support_hostname=True)
+        if chk_ping and chk_dest:
+            ping_rc=ping(chk_dest,timeout=3,support_hostname=True,log_format='i')
             if not isinstance(ping_rc,bool) and ping_rc==0:
                 return 0,'Canceled'
             elif not ping_rc:
-                return False,'Can not access to destination({})'.format(chk_dest)
+                if IsInt(command_timeout):
+                    Time=TIME()
+                    Time.Reset(name='good')
+                    while True:
+                        if Time.Out(command_timeout):
+                            return False,'Can not access to destination({}) over {} sec'.format(chk_dest,command_timeout)
+                        ping_rc=ping(chk_dest,count=1,support_hostname=True,log_format='i')
+                        if not isinstance(ping_rc,bool) and ping_rc==0:
+                            return 0,'Canceled'
+                        if ping_rc:
+                            if Time.Out(ping_good,name='good'):
+                                printf('\n',direct=True,log=log)
+                                break
+                            printf('.',direct=True,log=log)
+                        else:
+                            Time.Reset(name='good')
+                            printf('x',direct=True,log=log)
+                        time.sleep(2)
+                else:
+                    return False,'Can not access to destination({})'.format(chk_dest)
+        if bmc:
+            if IpV4(chk_dest,bmc=True,support_hostname=True) is False:
+                return False,'The IP({}) is not BMC IP'.format(chk_dest)
         ss = self.requests.Session()
         err_msg=''
         for j in range(0,max_try):
@@ -4015,7 +4038,11 @@ class WEB:
                 pass
             #except requests.exceptions.RequestException as e:
             err_msg='Server({}) has no response'.format(chk_dest)
-            if dbg: StdErr("\nServer({}) has no response (wait {}/{} (10s))".format(chk_dest,j,max_try))
+            if dbg:
+                printf('Server({}) has no response (wait {}/{} (10s))'.format(chk_dest,j,max_try),log=log,mode='s')
+            else:
+                printf('.',direct=True,log=log)
+                printf('Server({}) has no response (wait {}/{} (10s))'.format(chk_dest,j,max_try),log=log,mode='d')
             time.sleep(10)
         return False,'TimeOut: {}'.format(err_msg) if err_msg else 'TimeOut'
 
@@ -4041,27 +4068,44 @@ class WEB:
 
 class TIME:
     def __init__(self,src=None,timezone=None):
+        self.stopwatch={}
         self.timezone=timezone
-        self.init_time=self.Now(timezone=timezone)
-        self.life_time=self.init_time
-        self.init_sec=int(self.init_time.strftime('%s'))
+        self.stopwatch['init']=self.Now(timezone=self.timezone)
+        self.stopwatch['lifetime']=self.stopwatch['init']
         self.src=src
 
-    def Spend(self,life_time=True,unit=None,integer=True):
-        if life_time:
-            rt=int(self.Now().strftime('%s')) - int(self.life_time.strftime('%s'))
-        else:
-            rt=int(self.Now().strftime('%s')) - self.init_sec
+    def Spend(self,life_time=False,unit=None,integer=True,human_unit=True,name=''):
+        rt=None
+        if name and isinstance(name,str):
+            name=name.split(',')
+        if isinstance(name,list) and 1 <= len(name) <= 2:
+            if len(name) == 1 and name[0] in self.stopwatch:
+                rt=self.Now() - self.stopwatch[name[0]]
+            elif len(name) == 2 and name[0] in self.stopwatch and name[1] in self.stopwatch:
+                if self.stopwatch[name[0]] < self.stopwatch[name[1]]:
+                    rt=self.stopwatch[name[1]]-self.stopwatch[name[0]]
+                else:
+                    rt=self.stopwatch[name[0]]-self.stopwatch[name[1]]
+        if rt is None:
+            if life_time:
+                rt=self.Now() - self.stopwatch['lifetime']
+            else:
+                rt=self.Now() - self.stopwatch['init']
         # Convert integer value to human readable time
         # unit: None , integer: output : seconds (int)
         # Unit: None , not integer: output : Human readable passed time string (automatically calculate)
         # Unit: unit , integer: output : the unit's number (int)
         # Unit: unit , not integer: output : Human readable passed time string (max is defined unit)
-        return Human_Unit(rt,unit='S',want_unit=unit,int_out=integer)
+        rt=int(rt.total_seconds())
+        if human_unit:
+            return Human_Unit(rt,unit='S',want_unit=unit,int_out=integer)
+        return rt
 
-    def Reset(self,timezone=None):
-        self.init_time=self.Now(timezone=timezone)
-        self.init_sec=int(self.init_time.strftime('%s'))
+    def Reset(self,name=None,timezone=None):
+        if name:
+            self.stopwatch[name]=self.Now(timezone=timezone if timezone else self.timezone)
+        else:
+            self.stopwatch['init']=self.Now(timezone=timezone if timezone else self.timezone)
 
     def Sleep(self,try_wait=None,default=1):
         if isinstance(try_wait,(int,str)): try_wait=(try_wait,)
@@ -4093,41 +4137,65 @@ class TIME:
                     pass
         return default
 
-    def Int(self,timezone=None):
-        return self.Now(int,timezone=timezone)
-
-    def Now(self,mode=None,timezone=None,timedata=None):
-        if isinstance(timedata,self.Datetime()):
-            timedata=self.init_time
+    def Get(self,name=None,mode=None,timezone=None,default=False):
+        # Get name's time or initial time's 
+        # mode = int then return to int, not than return datetime 
+        if IsIn(name,['all']):
+            return self.stopwatch
+        elif IsIn(name,['now']):
+            timedata=self.Now(timezone=timezone)
         else:
-            if timezone is None: timezone=self.timezone
-            if isinstance(timezone,str) and timezone:
-                Import('import pytz')
-                try:
-                    timezone=pytz.timezone(timezone)
-                except:
-                    printf('Unknown current timezone ({})'.format(timezone),mode='e')
-                    return False
-                timedata=self.Datetime().now(timezone)
+            if IsIn(default,['now']):
+                default=self.Now(timezone=timezone)
+            elif IsIn(default,[False,'False','fail','error']):
+                default=False
             else:
-                timedata=self.Datetime().now()
-        if mode in [int,'int','INT','sec']:
-            return int(timedata.strftime('%s'))
+                default=self.stopwatch['init']
+            timedata=self.stopwatch.get(name,default)
+        if isinstance(timedata,self.Datetime()) and IsIn(mode,[int,'int','integer','sec']):
+            return int(timedata.timestamp())
         else:
             return timedata
 
-    def Out(self,timeout_sec,default=(24*3600)):
+    def Now(self,mode=None,timezone=None,timedata=None):
+        # Now time, mode:int than return int, not than return datetime
+        if timezone is None: timezone=self.timezone
+        if isinstance(timezone,str) and timezone:
+            Import('import pytz')
+            try:
+                timezone=pytz.timezone(timezone)
+            except:
+                printf('Unknown current timezone ({})'.format(timezone),mode='e')
+                return False
+            timedata=self.Datetime().now(timezone)
+        else:
+            timedata=self.Datetime().now()
+        if isinstance(timedata,self.Datetime()) and IsIn(mode,[int,'int','integer','sec']):
+            #return int(timedata.strftime('%s'))
+            return int(timedata.timestamp())
+        else:
+            return timedata
+
+    def Int(self,name=None,timezone=None):
+        # Now time to int, same as Now or Get
+        #return self.Now(int,timezone=timezone if timezone else self.timezone)
+        return self.Get(name,mode=int,timezone=timezone if timezone else self.timezone,default='now')
+
+    def Out(self,timeout_sec,default=(24*3600),name='init'):
+        #Check Timeout
         timeout_sec=Int(timeout_sec,default)
         if timeout_sec == 0:
             return False
-        if self.Int() - self.init_sec >  timeout_sec:
+        if self.Now() - self.Get(name,default='init') >  datetime.timedelta(seconds=timeout_sec):
             return True
         return False
+
     def Format(self,tformat='%s',read_format='%S',time='_#_'):
+        #convert time to format
         if IsNone(time,chk_val=['_#_'],chk_only=True): time=self.src
         if IsNone(time,chk_val=[None,'',0,'0']):
             return self.Now().strftime(tformat)
-        elif read_format == '%S':
+        elif read_format == '%S' or read_format == '%s':
             if isinstance(time,int) or (isinstance(time,str) and time.isdigit()):
                 return self.Datetime().fromtimestamp(int(time)).strftime(tformat)
         elif isinstance(time,str):
@@ -4135,8 +4203,8 @@ class TIME:
         elif isinstance(time,self.Datetime()):
             return time.strftime(tformat)
 
-    def Init(self):
-        return self.init_sec
+    def Init(self,mode=None):
+        return self.Get(name='init',mode=mode)
 
     def Time(self):
         return time.time()
@@ -4145,7 +4213,7 @@ class TIME:
         return datetime.datetime
 
     def Print(self,timedata=None,time_format='%Y-%m-%d %H:%M:%S'):
-        if not timedata: timedata=self.init_time
+        if not timedata: timedata=self.stopwatch['init']
         if isinstance(timedata,self.Datetime()):
             return timedata.strftime('%Y-%m-%d %H:%M:%S')
         return ''
@@ -4155,9 +4223,12 @@ class TIME:
             return self.Datetime().strptime(timedata,time_format)
         return ''
 
-    def TimeZone(self,setzone=None,want=None,timedata=None):
+    def TimeZone(self,setzone=None,want=None,name=None,timedata=None):
         '''set timezone at timedata or convert to want timezone'''
-        if not timedata: timedata=self.init_time
+        if isinstance(timedata,str):
+            timedata=self.ReadStr(timedata,time_format=time_format)
+        elif timedata is None:
+            timedata=self.Get(name=name if name else 'now')
         if isinstance(timedata,self.Datetime()):
             Import('import pytz')
             if isinstance(setzone,str) and setzone:
@@ -4190,20 +4261,23 @@ class TIME:
             return timedata
         return False
 
-    def TimeZoneName(self,timedata=None):
-        if not timedata: timedata=self.init_time
+    def TimeZoneName(self,name=None,timedata=None):
+        if isinstance(timedata,str):
+            timedata=self.ReadStr(timedata,time_format=time_format)
+        elif timedata is None:
+            timedata=self.Get(name=name if name else 'now')
         if isinstance(timedata,self.Datetime()):
             tzname=timedata.tzname()
             return tzname if tzname else timedata.astimezone().tzname()
 
-    def Utc2Local(self,time_format='%Y-%m-%d %H:%M:%S',mode='str',timedata=None):
+    def Utc2Local(self,time_format='%Y-%m-%d %H:%M:%S',mode='str',name=None,timedata=None):
         if isinstance(timedata,str):
             timedata=self.ReadStr(timedata,time_format=time_format)
         elif timedata is None:
-            timedata=self.init_time
+            timedata=self.Get(name=name if name else 'now')
         if isinstance(timedata,self.Datetime()):
             timedata=self.TimeZone(setzone='UTC',want='local',timedata=timedata)
-            return self.Print(timedata=timedata) if mode=='str' else timedata
+            return self.Print(timedata=timedata) if IsIn(mode,[str,'str','string']) else int(timedata.timestamp()) if IsIn(mode[int,'int','integer']) else timedata
         return False
 
 def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin/bash',path=None,progress=False,progress_pre_new_line=False,progress_post_new_line=True,log=None,env={},full_path=None,remove_path=None,remove_all_path=None,default_timeout=3600,env_out=False,cd=False,keep_cwd=False,decode=None):
