@@ -4324,7 +4324,7 @@ def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin
             printf('',ignore_empty=False,caller_parent=1,no_intro=True,log=log,log_level=1)
     start_time=TIME()
     if not Type(cmd,'str',data=True):
-        return -1,'wrong command information :{0}'.format(cmd),'',start_time.Init(),start_time.Init(),start_time.Now(int),cmd,path
+        return -1,'wrong command information :{0}'.format(cmd),'',start_time.Int('init'),start_time.Now(int),cmd,path
 
     ansi_escape = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')
     Popen=subprocess.Popen
@@ -4369,7 +4369,7 @@ def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin
                 if keep_cwd:
                     os.chdir(pwd)
             else:
-                return 1, '{} not found'.format(path), '{} not found'.format(path),start_time.Init(),start_time.Now(int),cmd,path
+                return 1, '{} not found'.format(path), '{} not found'.format(path),start_time.Int('init'),start_time.Now(int),cmd,path
         else:
             if exe_name in ['csh','tcsh']:
                 p = Popen('''setenv PATH "%s:${PATH}"; %s'''%(path,cmd) , shell=True, stdout=PIPE, stderr=STDOUT,executable=executable, env=os_env)
@@ -4459,8 +4459,8 @@ def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin
         out=ansi_escape.sub('',out)
         err=ansi_escape.sub('',err)
     if env_out:
-        return p.returncode, out, err,start_time.Init(),start_time.Now(int),cmd,path,os_env
-    return p.returncode, out, err,start_time.Init(),start_time.Now(int),cmd,path
+        return p.returncode, out, err,start_time.Int('init'),start_time.Now(int),cmd,path,os_env
+    return p.returncode, out, err,start_time.Int('init'),start_time.Now(int),cmd,path
 
 def IsCancel(func,**opts):
     return IsTrue(func,requirements=['cancel','canceling','REVD','stop','break'],**opts)
