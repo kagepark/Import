@@ -1403,6 +1403,8 @@ def Found(data,find,digitstring=False,word=False,white_space=True,sense=True,loc
             type_find='str'
     if type_data in ['str','bytes'] and type_find in ['str','bytes']:
         return _Found_(data,find,word,sense,location)
+    if sense:
+        return type(data) == type(find) and data == find
     return data == find
 
 def IsSame(src,dest,sense=False,order=False,_type_=False,digitstring=True,white_space=False,pythonlike=False,ignore_keys=[]):
@@ -1421,6 +1423,8 @@ def IsSame(src,dest,sense=False,order=False,_type_=False,digitstring=True,white_
        sense                : True: sensetive, False:(default) lower and upper is same
        white_space          : True: keep white space, False:(default) ignore white_space
        digitstring          : True:(default) string and intiger is same, False: different
+    exact same : sense=True,order=True,digitstring=False,white_space=True,pythonlike=False
+    same data  : sense=True,digitstring=False[,white_space=True,pythonlike=False]
     '''
     if _type_ is True: # If check type only
         return Type(src,dest)
