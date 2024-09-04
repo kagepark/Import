@@ -8088,6 +8088,499 @@ def GetOptValue(data,key,default=None,data_type=None,default_with_none=False):
                 return data[k]
     return default # not meet then default
 
+def fprintf(src,fmt,fmt_key=0,default=None,err=True,new_line='\n',location=True,cli=False,simple=False):
+    '''
+    require: copy, re
+    #Output : [[{data},line numver,original string],...]
+    #{data} : {'parameter':{'type':...,'opt':...,'exist':True/False,'data':...},...}
+    #fmt    :   {[:[:]]} ....
+    #fmt_key:
+    #   : 's key/location number
+    #   : type {KEY} instead  in fmt.
+    #  re    : fmt string is re's expression string
+    #  word  : fmt string is re's expression string and finding unit is word
+    #  : NONE => No data, just check that prameter only(exist or not)
+    #         : take data of index() starting from KEY (-n,-1,KEY,1,2,...)
+    #          0 : whole data (forward then forwared to new line, backward then backward to new line)
+    #         FIX: same as . but automatically indexing from KEY(fw:1,2,...,n, bw:-1,-2,...,-n)
+    #         IP : check data format to IP
+    #         MAC: check data format to MAC
+    #         INT: convert data to Int
+    #         Float: convert data to Float
+    #         BYTES: convert data to Bytes
+    #         BOOL: convert data to BOOL
+    #         STR: default (String data)
+    #   : how many taken data (>=2, default=1)
+    #location: True then show line number, False then always 0
+    #cli     : True then string convert to standard SHELL's to list, False then space will seperator
+    #ex) 
+    #   src="~]$ ENV ipmitool -I lanplug -H 192.168.3.100 -U ADMIN -P 'AD M  IN' chassis power status"
+    #   fmt="{ENV:FIX} ipmitool -H {IP:IP} -U {User} -P {User}"
+    #   fprintf(src,fmt,fmt_key=1,cli=True)
+    #   =>  [[{'ENV': {'data': 'ENV', 'idx': -1, 'num': None, 'opt': None, 'type': 'FIX'},
+               'IP': {'data': '192.168.3.100',
+                      'exist': True,
+                      'idx': None,
+                      'num': None,
+                      'opt': '-H',
+                      'type': 'IP'},
+               'Passwd': {'data': 'AD M  IN',
+                          'exist': True,
+                          'idx': None,
+                          'num': None,
+                          'opt': '-P',
+                          'type': 'STR'},
+               'User': {'data': 'ADMIN',
+                        'exist': True,
+                        'idx': None,
+                        'num': None,
+                        'opt': '-U',
+                        'type': 'STR'}},
+            0,
+            "~]$ ENV ipmitool -I lanplug -H 192.168.3.100 -U ADMIN -P 'AD M  IN' chassis "
+            'power status']]
+    '''
+    def finding(ll,fmt_v,backward=False,cli=False):
+        src_i=ll.index(fmt_v['E']['key']['string'])
+        src_len=fmt_v['E']['key']['length']
+        if backward:
+            if cli:
+                new_src_a=Str2Args(ll[:src_i])
+            else:
+                new_src_a=ll[:src_i].split()
+            keys=fmt_v['E']['bw']
+        else:
+            if cli:
+                new_src_a=[ll[src_i:src_i+src_len]]+Str2Args(ll[src_i+src_len:])
+            else:
+                new_src_a=[ll[src_i:src_i+src_len]]+ll[src_i+src_len:].split()
+            keys=fmt_v['E']['fw']
+        rt={}
+        for ii in keys:
+            rt[ii]=fmt_v['V'][ii]
+            opt_idx=fmt_v['V'][ii].get('idx') # if fixed location number
+            starts=fmt_v['V'][ii].get('starts')
+            ends=fmt_v['V'][ii].get('ends') 
+            if isinstance(opt_idx,int): # find fixed location data
+                if opt_idx == 0:
+                    if backward:
+                        data=piller(' '.join(new_src_a[:-1]))
+                    else:
+                        data=piller(' '.join(new_src_a[1:]))
+                    if starts and ends:
+                        if data.startswith(starts) and data.endswith(ends):
+                            rt[ii]['data']=data[len(starts):len(ends)]
+                    elif starts:
+                        if data.startswith(starts): rt[ii]['data']=data[len(starts):]
+                    elif ends:
+                        if data.endswith(ends): rt[ii]['data']=data[:-len(ends)]
+                    else:
+                        rt[ii]['data']=data
+                elif (opt_idx > 0 and len(new_src_a) > opt_idx) or (opt_idx < 0 and len(new_src_a) >= abs(opt_idx)):
+                    data=piller(new_src_a[opt_idx])
+                    if starts and ends:
+                        if data.startswith(starts) and data.endswith(ends):
+                            rt[ii]['data']=data[len(starts):len(ends)]
+                    elif starts:
+                        if data.startswith(starts): rt[ii]['data']=data[len(starts):]
+                    elif ends:
+                        if data.endswith(ends): rt[ii]['data']=data[:-len(ends)]
+                    else:
+                        rt[ii]['data']=data
+            else:
+                # find by option character
+                opt_g=rt[ii].get('opt')
+                if opt_g not in new_src_a: continue
+                rt[ii]['exist']=True
+                opt_t=rt[ii].get('type','STR')
+                #if opt_t in ['NONE','None',None]: continue
+                if IsNone(opt_t,chk_val=['NONE','None',None,'']): continue
+                opt_i=new_src_a.index(opt_g)
+                opt_n=rt[ii].get('num')
+                if opt_n is None: opt_n=0
+                if len(new_src_a) > opt_i+opt_n+1:
+                    if opt_n:
+                        found_data=piller(' '.join(new_src_a[opt_i+1:opt_i+opt_n+1]))
+                    else:
+                        found_data=piller(new_src_a[opt_i+1])
+                    if starts and ends:
+                        if found_data.startswith(starts) and found_data.endswith(ends):
+                            found_data=found_data[len(starts):len(ends)]
+                    elif starts:
+                        if found_data.startswith(starts): found_data=found_data[len(starts):]
+                    elif ends:
+                        if found_data.endswith(ends): found_data=found_data[:-len(ends)]
+                    if IsIn(opt_t,['ip','ipaddress']):
+                        if IpV4(found_data):
+                            rt[ii]['data']=found_data
+                    elif IsIn(opt_t,['mac','macaddress']):
+                        if MacV4(found_data):
+                            rt[ii]['data']=found_data
+                    elif IsIn(opt_t,[bytes,'byte','bytes']):
+                        try:
+                            rt[ii]['data']=bytes(found_data)
+                        except:
+                            if err:
+                                rt[ii]['data']=default
+                            else:
+                                rt[ii]['data']=found_data
+                    elif IsIn(opt_t,[bool,'bool']):
+                        try:
+                            rt[ii]['data']=bool(found_data)
+                        except:
+                            if err:
+                                rt[ii]['data']=default
+                            else:
+                                rt[ii]['data']=found_data
+                    elif IsIn(opt_t,[int,'int','integer']):
+                        try:
+                            rt[ii]['data']=int(found_data)
+                        except:
+                            if err:
+                                rt[ii]['data']=default
+                            else:
+                                rt[ii]['data']=found_data
+                    elif IsIn(opt_t,[float,'float']):
+                        try:
+                            rt[ii]['data']=int(found_data)
+                        except:
+                            if err:
+                                rt[ii]['data']=default
+                            else:
+                                rt[ii]['data']=found_data
+                    else:
+                        rt[ii]['data']=found_data
+                else:
+                    rt[ii]['data']=default
+        return copy.deepcopy(rt)
+    if not isinstance(src,str): return default
+    src_l_a=src.split(new_line)
+    # re Search
+    if fmt_key == 're':
+        rt=[]
+        fmt=fmt.replace('*','.+').replace('?','.')
+        find_form=re.compile(fmt,flags=re.IGNORECASE)
+        for src_ln in range(0,len(src_l_a)):
+            # Search line by line for key
+            if isinstance(src_l_a[src_ln],str):
+                aa=find_form.findall(src_l_a[src_ln])
+                if aa:
+                    rt.append([aa,src_ln,src_l_a[src_ln]])
+        return rt
+    elif fmt_key == 'word':
+        rt=[]
+        fmt=fmt.replace('*','.+').replace('?','.')
+        find_form=re.compile(r'\b({0})\b'.format(fmt),flags=re.IGNORECASE)
+        for src_ln in range(0,len(src_l_a)):
+            # Search line by line for key
+            if isinstance(src_l_a[src_ln],str):
+                aa=find_form.findall(src_l_a[src_ln])
+                if aa:
+                    rt.append([aa,src_ln,src_l_a[src_ln]])
+        return rt
+    elif isinstance(fmt,set):
+        for src_ln in range(0,len(src_l_a)):
+            src_a=src_l_a[src_ln].split()
+            for ii in src_a:
+                found_data=piller(ii)
+                if fmt == {'IP'}:
+                    if IpV4(found_data):
+                        rt.append([found_data,src_ln,src_l_a[src_ln]])
+                elif fmt == {'MAC'}:
+                    if MacV4(found_data):
+                        rt.append([found_data,src_ln,src_l_a[src_ln]])
+        return rt
+    
+    # CLI Search
+    new_src=None
+    # make fmt_v
+    fmt_v={'E':{},'V':{}}
+    fmt_a=fmt.split()
+    if isinstance(fmt_key,str):
+        found_key=re.search(fmt_key,src)
+        if found_key is None: return [] #not found
+        loc=found_key.span()
+        #fmt_v['E']['key']={'string':found_key.group(),'str_idx':loc[0],'length':(loc[1]-loc[0])}
+        fmt_v['E']['key']={'string':fmt_key,'str_idx':loc[0],'length':(loc[1]-loc[0])}
+        if '{KEY}' in fmt_a:
+            fmt_key=fmt_a.index('{KEY}')
+        else:
+            print('missing {KEY} in fmt')
+            return False
+    elif isinstance(fmt_key,int):
+        if len(fmt_a) <= fmt_key: 
+            print('out of fmt_key in fmt')
+            return False
+        if fmt_a[fmt_key] not in src: return [] # Not found
+        loc=src.index(fmt_a[fmt_key])
+        fmt_v['E']['key']={'string':fmt_a[fmt_key],'str_idx':loc,'length':len(fmt_a[fmt_key])}
+    fmt_v['E']['bw']=[]
+    fmt_v['E']['fw']=[]
+    for ii in range(0,len(fmt_a)):
+        if fmt_key == ii: continue
+        if fmt_a[ii] == '{KEY}':
+            fmt_key=ii
+            continue
+        fmt_p=piller(fmt_a[ii])
+        bsc=fmt_p.count('{')
+        bec=fmt_p.count('}')
+        if bsc > 0 and bsc == bec:
+            ps=fmt_p.index('{')
+            pe=fmt_p.index('}')
+            ps_r=None
+            pe_r=None
+            if ps > 0: ps_r=fmt_p[:ps]
+            if len(fmt_p) > pe+1: pe_r=fmt_p[pe+1:]
+            var=fmt_p[ps+1:pe].split(':')
+            if var[0] in fmt_v['V']:
+                return False,'Duplicated variable name({})'.format(var[0])
+            idx=None
+            num=None
+            opt=None
+            _type='STR'
+            len_var=len(var)
+            if ii < fmt_key:
+                fmt_v['E']['bw'].append(var[0])
+            else:
+                fmt_v['E']['fw'].append(var[0])
+            if len_var > 2: #take number of data
+                if var[2]:
+                    try:
+                        num=int(var[2])
+                        if num < 2: num=None
+                    except:
+                        print('{} has wrong define. it should be int at  in ::'.format(var[0]))
+                        continue
+            if len_var > 1: #Data Type
+                _type=var[1]
+                if isinstance(_type,str):
+                    try:
+                        _type=int(_type)
+                        if _type == 0:
+                            idx=0
+                        elif _type > 0:
+                            idx=_type-fmt_key
+                        elif _type < 0:
+                            idx=_type+1-fmt_key
+                        _type='FIX'
+                    except:
+                        if _type == 'FIX':
+                            idx=ii-fmt_key
+                        elif not _type:
+                            _type='STR'
+                # Set OPT
+            if _type != 'FIX': opt=fmt_a[ii-1]
+            # Make Variable
+            fmt_v['V'][var[0]]={'type':_type,'opt':opt,'num':num,'idx':idx,'starts':ps_r,'ends':pe_r,'form':fmt_a[ii]}
+    # Location data
+    if not location:
+        if new_line:
+            new_src=''
+            if fmt_v['E']['bw']:
+                new_src=src[:fmt_v['E']['key']['str_idx']].split(new_line)[-1]
+            if fmt_v['E']['fw']:
+                new_src=new_src+src[fmt_v['E']['key']['str_idx']:].split(new_line)[0]
+            src=new_src
+        else:
+            if fmt_v['E']['bw'] and not fmt_v['E']['fw']:
+                src=src[:fmt_v['E']['key']['str_idx']]
+            elif not fmt_v['E']['bw'] and fmt_v['E']['fw']:
+                src=src[fmt_v['E']['key']['str_idx']:]
+            #else: all string
+        
+    if not new_line:
+        src_l=[src]
+    else:
+        src_l=src.split(new_line)
+    # Find data
+    rt=[]
+    for src_ln in range(0,len(src_l)):
+        fv={}
+        # Search line by line for key
+        if fmt_v['E']['key']['string'] not in src_l[src_ln]: continue
+        if fmt_key >= 0:
+            aa=finding(src_l[src_ln],fmt_v,cli=cli)
+            if aa: fv.update(aa)
+        if fmt_key > 0:
+            aa=finding(src_l[src_ln],fmt_v,backward=True,cli=cli)
+            if aa: fv.update(aa)
+        if fv: rt.append([fv,src_ln,src_l[src_ln]])
+    if simple and rt:
+        nrt={}
+        for ii in rt[0][0]:
+            if rt[0][0][ii].get('data'):
+                nrt[ii]=rt[0][0][ii].get('data')
+            else:
+                nrt[ii]=rt[0][0][ii].get('exist')
+        return nrt
+    return rt
+
+def piller(data,mode='cli',pill_list={'python':["'''",'"""','"',"'"],'cli':['"',"'"],'bracket':['{','[']}):
+    if mode in ['cli','shell','list','console']: mode='cli'
+    for ii in pill_list.get(mode,[]):
+        if isinstance(data,str) and len(data) > len(ii) * 2:
+            if mode == 'bracket':
+                if data[:1] == ii:
+                    if ii == '{' and data[-1:] == '}':
+                        return data[1:-1]
+                    elif ii == '[' and data[-1:] == ']':
+                        return data[1:-1]
+                    elif ii == '(' and data[-1:] == ')':
+                        return data[1:-1]
+                    elif ii == '<' and data[-1:] == '>':
+                        return data[1:-1]
+            else:
+                if data[:len(ii)] == ii and data[-len(ii):] == ii:
+                    return data[len(ii):-len(ii)]
+    return data
+
+
+def Str2Args(data,breaking='-'):
+    '''Convert String to Standard SHELL/CLI/SYS Args data(list)'''
+    def inside_data(rt,breaking,data_a,ii,symbol):
+        tt=data_a[ii][1:]
+        if len(data_a) > ii:
+            for jj in range(ii+1,len(data_a)):
+                if data_a[jj] and data_a[jj].startswith(breaking):
+                    for tt in range(ii,jj+1):
+                        rt.append(data_a[tt])
+                    return jj
+                if (data_a[jj] and data_a[jj][0] != symbol and data_a[jj][-1] == symbol) or (data_a[jj] and data_a[jj][0] == symbol):
+                    tt=tt+""" {}""".format(data_a[jj][:-1])
+                    rt.append(tt)
+                    tt=''
+                    return jj
+                else:
+                    tt=tt+""" {}""".format(data_a[jj])
+        return None
+ 
+ 
+    data_a=data.split(' ')
+    rt=[]
+    ii=0
+    while ii < len(data_a):
+        if not data_a[ii]:
+            ii+=1
+            continue
+        if data_a[ii][0] == '"' and data_a[ii][-1] == '"':
+            rt.append(data_a[ii][1:-1])
+        elif data_a[ii][0] == "'" and data_a[ii][-1] == "'":
+            rt.append(data_a[ii][1:-1])
+        elif data_a[ii][0] == "'" and data[ii][-1] != "'":
+            a=inside_data(rt,breaking,data_a,ii,"'")
+            if isinstance(a,int): ii=a
+        elif data_a[ii][0] == '"' and data[ii][-1] != '"':
+            a=inside_data(rt,breaking,data_a,ii,'"')
+            if isinstance(a,int): ii=a
+        else:
+            rt.append(data_a[ii])
+        ii+=1
+    return rt
+
+def IsFloat(a):
+    try:
+        float(a)
+        return True
+    except:
+        return False
+
+def IsBool(a):
+    try:
+        if isinstance(a,str): a=eval(a)
+        if isinstance(a,bool) and not isinstance(a,int):
+            return True
+    except:
+         pass
+    return False
+
+
+def scanf(string,fmt,**opts):
+    '''
+    a=scanf('<any string>',<format of finding value>,<options>)
+    <format of finding value> : {<parameter name>} or {<parameter name>:<format>}
+      - format : IP, MAC, INT, Float, BOOL, STR(default)
+    scanf("ipmitool -H 192.168.1.3 -U ADMIN -P 'ADMIN 123' chassis power status","ipmitool -H {ip:ip} -U {user} -P {passwd} chassis")
+    => {'ip': '192.168.1.3', 'user': 'ADMIN', 'passwd': 'ADMIN 123'}
+    '''
+    err=opts.get('err',opts.get('error',False))
+    new_line=opts.get('newline',opts.get('new_line'))
+    # Exact same format
+    if opts.get('fix',opts.get('fixed',opts.get('fixed_form',opts.get('same',opts.get('exact_same',opts.get('sameform',opts.get('space',opts.get('whitespace',opts.get('white_space',False))))))))) is True:
+        regex = re.sub(r'{(.+?)}', r'(?P<_\1>.+)', fmt)
+        found=re.search(regex, string)
+        if found:
+            values = list(found.groups())
+            keys = re.findall(r'{(.+?)}', fmt)
+            _dict = dict(zip(keys, values))
+            return _dict
+        return {}
+    #Similar format
+    fmt_d=[]
+    fmt_a=fmt.split()
+    for i,f in enumerate(fmt_a):
+        if f and f[0] == '{' and f[-1] == '}':
+            f_a=f[1:-1].split(':')
+            if len(f_a) == 2:
+                fmt_d.append({'id':i,'name':f_a[0],'type':'parameter','form':f_a[1]})
+            else:
+                fmt_d.append({'id':i,'name':f[1:-1],'type':'parameter'})
+        else:
+            fmt_d.append({'id':i,'name':f,'type':'string'})
+    def find_in_line(line_string,fmt_d):
+        out={}
+        foundstarts=0
+        nextfoundstarts=0
+            
+        for s in Str2Args(line_string):
+            if foundstarts >= len(fmt_d): break
+            if fmt_d[foundstarts].get('type') == 'string':
+                if s == fmt_d[foundstarts].get('name'):
+                    foundstarts+=1
+                else:
+                    foundstarts=nextfoundstarts
+                continue
+            elif fmt_d[foundstarts].get('type') == 'parameter':
+                if fmt_d[foundstarts].get('form','_N.A_') != '_N.A_':
+                    if IsIn(fmt_d[foundstarts].get('form'),['ip','ipaddress']):
+                        if IpV4(s):
+                            nextfoundstarts=foundstarts
+                            out[fmt_d[foundstarts].get('name')]=s
+                            foundstarts+=1
+                    elif IsIn(fmt_d[foundstarts].get('form'),['mac','macaddress']):
+                        if MacV4(s):
+                            nextfoundstarts=foundstarts
+                            out[fmt_d[foundstarts].get('name')]=s
+                            foundstarts+=1
+                    elif IsIn(fmt_d[foundstarts].get('form'),[int,'int','integer']):
+                        if IsInt(s):
+                            nextfoundstarts=foundstarts
+                            out[fmt_d[foundstarts].get('name')]=eval(s)
+                            foundstarts+=1
+                    elif IsIn(fmt_d[foundstarts].get('form'),[float,'float']):
+                        if IsInt(s) or IsFloat(s):
+                            nextfoundstarts=foundstarts
+                            out[fmt_d[foundstarts].get('name')]=eval(s)
+                            foundstarts+=1
+                    elif IsIn(fmt_d[foundstarts].get('form'),[bool,'bool']):
+                        if IsBool(s):
+                            nextfoundstarts=foundstarts
+                            out[fmt_d[foundstarts].get('name')]=eval(s)
+                            foundstarts+=1
+                else:
+                    nextfoundstarts=foundstarts
+                    out[fmt_d[foundstarts].get('name')]=s
+                    foundstarts+=1
+        return out
+    if new_line:
+        for ll in string.split(new_line):
+            out=find_in_line(ll,fmt_d)
+            if out: return out
+    elif isinstance(string,str):
+        string.replace('\n',' ')
+        return find_in_line(string.replace('\n',' '),fmt_d)
+    return {}
+
+
 #if __name__ == "__main__":
 #    # Integer
 #    print("Get(12345):",Get(12345))
