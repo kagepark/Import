@@ -7024,6 +7024,21 @@ def RemoveNewline(src,mode='edge',newline='\n',byte=None):
         return Join(src_a,symbol='')
     return src
 
+def ls(dirname,opt=''):
+    if not IsNone(dirname) and os.path.isdir(dirname):
+        dirlist=[]
+        dirinfo_a=list(os.walk(dirname))
+        if not IsNone(dirinfo_a):
+            dirinfo=dirinfo_a[0]
+            if opt == 'd':
+                dirlist=Get(dirinfo,1)
+            elif opt == 'f':
+                dirlist=Get(dirinfo,2)
+            else:
+                dirlist=Get(dirinfo,1)+Get(dirinfo,2)
+            return dirlist
+    return False
+
 def cat(filename,**opts):
     byte=opts.get('byte',False)
     newline=opts.get('newline','\n')
