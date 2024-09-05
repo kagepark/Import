@@ -5685,9 +5685,11 @@ class LIST(list):
         except:
             print('Not support mixed string and int')
 
-def Iterable(inp,default=[]):
+def Iterable(inp,default=[],split=None):
     if isinstance(inp,(list,tuple,dict)):
         return inp
+    elif isinstance(inp,str) and split:
+        return inp.split(split)
     return default
 
 def List(*inps,**opts):
@@ -6068,17 +6070,17 @@ def printf(*msg,**opts):
         printf('aaaaa',log_level=3) -> this will print
         printf('bbbbb',log_level=8) -> this not print. but if change printf_log_base to 9 then it will print
     log=<func>                   : put logging data to log function
-    dsp=                         : Display format
-        a  : auto
-        s  : screen
-        f  : save to file
-        d  : save to debug file
-        e  : log to standard error 
-        c  : console
-        i  : ignore print
-        r  : return
-           rt=printf('xxxx',dsp='r')
-           print(rt)
+    dsp or mode =                : Display format/mode
+        a      : auto
+        s      : screen
+        f or d : save to file only
+        n      : ignore save to file only for duplicated message (special case, want don't print at debug file)
+        e      : log to standard error 
+        c      : console
+        i      : ignore print (all of printing (file,debug,screen,....))
+        r      : return the log message
+                 rt=printf('xxxx',dsp='r')
+                 print(rt)
     '''
     global printf_caller_detail
     global printf_caller_tree
@@ -6226,7 +6228,7 @@ def printf(*msg,**opts):
     log_p=False
     if IsFunction(log): # Log function( debug mode log function too )
         try:
-            if ('d' in dsp or 'f' in dsp) and logfile:
+            if ('d' in dsp or 'f' in dsp) and logfile and 'n' not in dsp:
                 if 'caller_parent' in opts:
                     if isinstance(opts['caller_parent'],int):
                         opts['caller_parent']=opts['caller_parent']+1
@@ -6388,7 +6390,7 @@ def printf(*msg,**opts):
         printf_newline_info.Put('e',False if new_line else True)
     elif 'c' in dsp: #Display to console (it also work with Robot Framework)
         print(start_newline+msg_str+new_line,end='',file=sys.__stdout__)
-    elif 's' in dsp or 'a' in dsp: # Print out on screen
+    elif 's' in dsp or 'a' in dsp or 'n' in dsp: # Print out on screen
         if intro_msg and not no_start_newline:
             if printf_newline_info.Get('a' if 'a' in dsp else 's'): 
                 start_newline='\n'
