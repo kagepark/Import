@@ -5688,7 +5688,7 @@ class LIST(list):
 def Iterable(inp,default=[],split=None):
     if isinstance(inp,(list,tuple,dict)):
         return inp
-    elif isinstance(inp,str) and split:
+    elif isinstance(inp,str) and isinstance(split,str) and split:
         return inp.split(split)
     return default
 
