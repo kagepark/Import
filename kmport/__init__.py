@@ -1638,6 +1638,26 @@ def IsNone(src,**opts):
         return False if Type(src,CheckType) else True
     return False
 
+def IsExist(src,**opts):
+    # check up for data is exist or not 
+    # or the data is my want's type and existing or not
+    data_type=opts.get('type',opts.get('data_type',opts.get('_type_','_NA_')))
+    if data_type != '_NA_':
+        if data_type is None and src is None: return True
+        elif type(data_type).__name__ == 'type':
+            if type(src) == data_type:
+                return True
+        else:
+             if src == data_type: return True
+        return False
+    else: 
+        if isinstance(src,(list,tuple,dict,str)):
+            if not src: return False
+        #elif src is None: return True
+        #elif isinstance(src,(bool,int)):
+        #    return True
+        return True
+
 def IsVar(src,obj=None,default=False,mode='all',parent=0):
     '''
     Check the input(src) is Variable name or not (in OBJ or in my function)
