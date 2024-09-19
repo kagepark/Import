@@ -1091,7 +1091,7 @@ def TypeName(obj):
             parent_name=inspect.getmro(obj.__class__)[1].__name__
             if parent_name != 'object':
                 return parent_name
-        if obj_name == 'type': return 'classobj'
+        if obj_name == 'type' or inspect.isclass(obj): return 'classobj'
         if obj_name == 'Response': return 'response'
         if obj_name == 'Request': return 'request'
         return 'instance'
@@ -3291,7 +3291,10 @@ def Get(*inps,**opts):
                             rt.append(Variable(nidx,obj))
                 return OutFormat(rt,out=out,default=default,org=obj,peel=peel,strip=strip)
     elif obj_type in ('instance','classobj','module','Model'):
-        if Type(idx,str) and idx.lower() in ['func','function','functions','funclist','func_list','list']:
+        if Type(idx,int):
+            if isinstance(obj,kRT):
+                return obj.get(key=idx,default=[],mode=list)
+        elif Type(idx,str) and idx.lower() in ['func','function','functions','funclist','func_list','list']:
             return FunctionList(obj)
         elif idx_type in ['list','tuple']: #OR Index
             rt=[]
@@ -3303,7 +3306,14 @@ def Get(*inps,**opts):
                         if Type(obj,'instance'):
                             rt=rt+MethodInClass(obj)
                     else:
-                        rt.append(getattr(obj,ff,default))
+                        try:
+                            rt.append(getattr(obj,ff,default))
+                        except Exception as e:
+                            if err:
+                                print(f"An error occured: {e}")
+                                raise
+                            else:
+                                pass
             return OutFormat(rt,out=out,default=default,org=obj,peel=peel,strip=strip)
         elif idx_type == 'str':
             if obj_type == 'classobj': obj=obj() # move CLASS to CLASS()
@@ -5910,6 +5920,7 @@ def krc(rt=None,chk='_',rtd=None,default=False,mode=None,ext='shell'):
         if isinstance(nrtd,dict):
             return nrtd.keys()
     def trans(irt):
+        #type_irt=str(irt) if isinstance(irt,kRT) else type(irt)
         type_irt=type(irt)
         for ii in nrtd:
             for jj in nrtd[ii]:
@@ -5917,7 +5928,10 @@ def krc(rt=None,chk='_',rtd=None,default=False,mode=None,ext='shell'):
                     return ii
         return 'UNKN'
     rtc=Get(rt,'0|rc',err=True,default='org',type=(bool,int,list,tuple,dict))
-    nrtc=trans(Peel(rtc,err=False,default='unknown')) #If Get() got multi data then use first data
+    a=Peel(rtc,err=False,default='unknown') #If Get() got multi data then use first data
+    if isinstance(a,kRT): a=FormData(str(a)) # convert kRT()'s rc to rc data
+    #nrtc=trans(Peel(rtc,err=False,default='unknown')) #If Get() got multi data then use first data
+    nrtc=trans(a) #If Get() got multi data then use first data
     if chk != '_':
         if not isinstance(chk,list): chk=[chk]
         for cc in chk:
@@ -8616,6 +8630,334 @@ def scanf(string,fmt,**opts):
         string.replace('\n',' ')
         return find_in_line(string.replace('\n',' '),fmt_d)
     return {}
+
+class kRT:
+    __name__='kRT'
+    def __init__(self,*args,_history_='1-5',_merge_=False,**kwargs):
+        # default : dictionary, optional : tuple
+        # _merge_ : merge between input kRT data's kwargs and my kwargs
+        #  True   : merge mine to old data (mine is new)
+        #  False  : None (only keep mine)
+        # X_merge_ : merge between kwargs's args and *args when kwargs has args parameter
+        # X True : merge kwargs's args to args
+        # X False: error
+        # X None : keep kwargs's args
+        if isinstance(_history_,str):
+            history_a=_history_.split('-')
+            if len(history_a) == 2:
+                if not history_a[0]:
+                    history_a[0]=['1']
+            else:
+                history_a=['1','5']
+            historyrange='-'.join(history_a)
+        else:
+            historyrange='1-5'
+        self.__info__={'history':FunctionName(parent=historyrange,history=True,tree=True,line_number=True,filename=True,args=True),'parent':None,'time':TIME().Int()}
+        if 'args' in kwargs:
+            if arg:
+                raise IndexError('duplicated args parameter')
+            else:
+                if isinstance(kwargs['args'],list):
+                    self.arg=tuple(kwargs['args'])
+                elif not isinstance(kwargs['args'],tuple):
+                    self.arg=tuple([kwargs['args']])
+                else:
+                    self.arg=kwargs['args']
+            #if _merge_:
+            #    if isinstance(kwargs['args'],tuple):
+            #        self.args=args+kwargs['args']
+            #    elif isinstance(kwargs['args'],list):
+            #        self.args=args+tuple(kwargs['args'])
+            #    else:
+            #        self.args=args+tuple([kwargs['args']])
+            #elif _merge_ is False:
+            #    raise IndexError('duplicated args parameter')
+            #else: #merge is None
+            #    if isinstance(kwargs['args'],tuple):
+            #        self.args=kwargs['args']
+            #    elif isinstance(kwargs['args'],list):
+            #        self.args=tuple(kwargs['args'])
+            #    else:
+            #        self.args=tuple([kwargs['args']])
+        else:
+            self.arg=args
+        if 'parent' in kwargs:
+            if type(kwargs['parent']) == type(self):
+                self.__info__['parent']=kwargs.pop('parent')
+        if not self.__info__['parent'] and self.arg: 
+            for i in self.arg:
+                if type(i) == type(self):
+                    # if following old kRT data then just update history for checking following history
+                    self.__info__['parent']=i
+                    ##remove old return value? or keep it in args ?
+                    #if _merge_:
+                    #    #merge old input kRT's kwargs value to my kwargs when not exist data in mine for reference
+                    #    # mine data must be mine data
+                    #    _a_=self.arg[0].get(mode=dict)
+                    #    for i in _a_:
+                    #        if i not in kwargs:
+                    #            kwargs[i]=_a_[i]
+        if 'rc' in kwargs:
+            self.rc=kwargs['rc']
+        elif self.arg: #
+            if type(self.arg[0]) == type(self): # ignore return code for my self OBJ
+                if len(self.arg) > 1:
+                    self.rc=self.arg[1]
+                else:
+                    self.rc=None
+            else:
+                self.rc=self.arg[0]
+        else:
+            self.rc=None
+        for key, value in kwargs.items():
+            setattr(self,key,value)
+
+    #def __setattr__(self,key,value):
+    #    # Not support this function when __init__ has *args
+    #    #Handle dot notation access
+    #    # Put data: obj.key=value
+    #    if key == 'kwargs':
+    #        super().__setattr__(name,value)
+    #    else:
+    #        self.kwargs[key]=value
+
+    def __setitem__(self,key,value):
+        #for obj[key]=value
+        if isinstance(key,int): 
+            if len(self.arg) > abs(key): # replace
+                self.arg=list(self.arg)
+                self.arg[key]=value
+                self.arg=tuple(self.arg)
+            elif key < 0: # insert at first
+                self.arg=tuple([value])+self.arg
+            else: #key > 0
+                self.arg=self.arg+tuple([value]) # append
+        else: # update/add self dict
+            setattr(self,key,value)
+
+    def __getitem__(self,key):
+        #Get data : obj[key]
+        if isinstance(key,int):
+            if len(self.arg) > abs(key):
+                return self.arg[key]
+            else:
+                raise IndexError('Out of index')
+        else:
+            if key != '__info__' and key in self.__dict__:
+                return self.__dict__[key]
+            elif key == '__history__':
+                return self.__info__['history']
+            elif key == '__parent__':
+                return self.__info__['parent']
+            elif key == '__time__':
+                return self.__info__['time']
+            elif key in ['__full__','__dict__']:
+                return self.__dict__
+            elif key == '__list__':
+                return self.arg
+            raise IndexError('Not found the key({})'.format(key))
+
+    def __getattr__(self,key):
+        #Handle dot notation access
+        # Get data: obj.key (can not put int at key (obj.2)
+        #if isinstance(key,int):
+        #    if len(self.arg) > abs(key):
+        #        return self.arg[key]
+        #    else:
+        #        raise IndexError('Out of index')
+        #elif key in self.__dict__:
+        if key != '__info__' and key in self.__dict__:
+            return self.__dict__[key]
+        elif key == '__history__':
+            return self.__info__['history']
+        elif key == '__parent__':
+            return self.__info__['parent']
+        elif key == '__time__':
+            return self.__info__['time']
+        elif key == '__full__':
+            return self.__dict__
+        elif key == '__list__':
+            return self.arg
+        else:
+            raise IndexError(f'Not found the key({key})')
+
+    def __bool__(self):
+        # for if command
+        # if 0 then False, if # then True, if others then True, if bool then return bool
+        if isinstance(self.rc,bool):
+            return self.rc
+        elif isinstance(self.rc,int):
+            return False if self.rc == 0 else True
+        elif self.rc:
+            return True
+        return False
+
+    def __str__(self):
+        # in print(), str()
+        return str(self.rc)
+
+    def __int__(self):
+        # in int()
+        try:
+            return int(self.rc)
+        except:
+            raise ValueError(f"{self.rc} is not numberable")
+
+    def __delitem__(self,key):
+        if isinstance(key,int):
+            if len(self.arg) > abs(key):
+                del self.arg[key]
+            else:
+                raise IndexError('Out of index')
+        elif key in self.get():
+            del self.__dict__[key]
+        else:
+            raise KeyError(f"Key {key} not found")
+
+    def __contain__(self,key):
+        #key is in the data ( 3 in data )
+        #return key in self.get()
+        if key in self.__dict__:
+            return True
+        elif key in self.arg:
+            return True
+        return False
+
+    def __len__(self):
+        # in len()
+        return len(self.get())
+
+    def __iter__(self):
+        # in iter()
+        return iter(self.get())
+
+    def __eq__(self,other):
+        # for a == b
+        if isinstance(other,kRT):
+            return self.rc==other.rc
+        return self.rc==other
+
+    def __add__(self,other):
+        # for a + b
+        if isinstance(other,kRT): other=other.rc
+        if isinstance(self.rc,int) and isinstance(other,int):
+            return self.rc+other
+
+    def __sub__(self,other):
+        # for a - b
+        if isinstance(other,kRT): other=other.rc
+        if isinstance(self.rc,int) and isinstance(other,int):
+            return self.rc-other
+
+    def get(self,key=None,default=None,mode='arg-dict',err=False,parent=None):
+        # Get data: obj.get(key)
+        def arg_data(a,key,err=False):
+            if isinstance(key,int):
+                if len(a.arg) > abs(key):
+                    return a.arg[key]
+                else:
+                    if err:
+                        raise KeyError(f"Key {key} out of range")
+                    else:
+                        if key < 0:
+                            return a.arg[0]
+                        else:
+                            return a.arg[-1]
+            if key is None: return a.arg
+        # if being parent
+        if isinstance(parent,int) and parent > 0 and self.__info__['parent']:
+            a=self.__info__['parent']
+            for i in range(1,parent):
+                a=a.__info_['parent']
+                if not a.__info__['parent']: break
+        else:
+            a=self
+
+        if mode is list:
+            return arg_data(a,key,err=err)
+        elif isinstance(mode,str):
+            mode_a=mode.lower().split('-')
+            if mode_a[0] in ['list','args','arg','opt','opts']:
+                _tmp_=arg_data(a,key,err=err)
+                if len(mode_a) == 1:
+                    return _tmp_
+                elif _tmp_: #if multi (arg-dict) and no data of arg then get dict
+                    return _tmp_
+        if key in ['__history__']:
+            return '\n'.join(a.__info__['history'])
+        elif key in ['__time__']:
+            return a.__info__['time']
+        elif key in ['__parent__']:
+            return a.__info__['parent']
+        elif key in ['__full__','__dict__']: 
+            return a.__dict__
+        elif key in ['rc','RC','Rc']:
+            return a.rc
+        elif key:
+            return a.__dict__.get(key,default)
+        else:
+            return {key:value for key, value in a.__dict__.items() if key not in ['__info__']}
+
+    def put(self,key,value,mode=dict,err=False,**opts):
+        if mode is list or (isinstance(mode,str) and mode.lower() in ['list','args','arg','opt','opts']):
+            if isinstance(key,int):
+                add=opts.get('add',opts.get('append',False))
+                if add:
+                    if key == -1:
+                        self.arg=self.arg+tuple([value])
+                    elif len(self.arg) > abs(key):
+                        self.arg=self.arg[:key]+tuple([value])+self.arg[key:]
+                    else:
+                        if err:
+                            raise KeyError(f"Key {key} out of range")
+                        else:
+                            if key < 0:
+                                self.arg=tuple([value])+self.arg
+                            else:
+                                self.arg=self.arg+tuple([value])
+                else:
+                    if len(self.arg) > abs(key):
+                        self.arg=list(self.arg)
+                        self.arg[key]=value
+                        self.arg=tuple(self.arg)
+                    else:
+                        if err:
+                            raise KeyError(f"Key {key} out of range")
+                        else:
+                            if key < 0:
+                                self.arg=list(self.arg)
+                                self.arg[0]=value
+                                self.arg=tuple(self.arg)
+                            else:
+                                self.arg=list(self.arg)
+                                self.arg[-1]=value
+                                self.arg=tuple(self.arg)
+        if key in ['rc','RC','Rc']:
+            self.rc=value
+        else:
+            self.__dict__[key]=value
+
+    #Dict case
+    def items(self):
+        return self.get().items()
+
+    def keys(self):
+        return self.get().keys()
+
+    def values(self):
+        return self.get().values()
+
+    def args(self):
+        return self.get(mode=list)
+
+    def opts(self):
+        return self.get()
+
+    def code(self):
+        return self.rc
+
+    def status(self):
+        return self.rc
 
 
 #if __name__ == "__main__":
