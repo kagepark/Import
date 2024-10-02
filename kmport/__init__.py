@@ -1060,14 +1060,28 @@ def TypeName(obj):
     '''
     Get input's Type,Instance's name
     '''
-    obj_dir=dir(obj)
+    def safe_dir(obj, seen=None):
+        if seen is None:
+            seen = set()
+        
+        if id(obj) in seen:
+            return []  # Avoid circular reference
+        seen.add(id(obj))
+        
+        try:
+            attributes = [attr for attr in dir(obj) if not attr.startswith('__')]
+            return attributes
+        except Exception:
+            return []
+
     obj_name=type(obj).__name__
     if obj_name in ['function','ImmutableMultiDict']: return obj_name
     # Special Type of Class : Remove according to below code
     #elif obj_name in ['kDict','kList']+[name for name, obj in inspect.getmembers(sys.modules[__name__]) if inspect.isclass(obj)]: # Special case name
     #    print('>>> TypeName2:',obj_name, '<=', obj)
     #    return obj_name
-    elif obj_name in ['str']:
+    elif obj_name in ['int','float','str','dict','tuple','list','bool','NoneType']:
+    #elif obj_name in ['str']:
         #try:
         #    obj_tmp=eval(obj)
         #    if type(obj_tmp).__name__ not in ['module','classobj','function','response','request']:
@@ -1078,28 +1092,34 @@ def TypeName(obj):
         #        return obj.lower()
         #    elif obj in ['kDict','kList','DICT']: # Special case name
         #        return obj
-        return 'str'
-    if '__dict__' in obj_dir: # Class Object
-        # Special case Class: sub class from parent class then return parent class type
-        try:
-            # CN case
-            parent_name=inspect.getmro(obj)[1].__name__
-            if parent_name != 'object':
-                return parent_name
-        except:
-            # CN() case
-            parent_name=inspect.getmro(obj.__class__)[1].__name__
-            if parent_name != 'object':
-                return parent_name
-        if obj_name == 'type' or inspect.isclass(obj): return 'classobj'
-        if obj_name == 'Response': return 'response'
-        if obj_name == 'Request': return 'request'
-        return 'instance'
+    #    return 'str'
+        return obj_name
+    try:
+        #obj_dir=dir(obj)
+        obj_dir=safe_dir(obj)
+        if '__dict__' in obj_dir: # Class Object
+            # Special case Class: sub class from parent class then return parent class type
+            try:
+                # CN case
+                parent_name=inspect.getmro(obj)[1].__name__
+                if parent_name != 'object':
+                    return parent_name
+            except:
+                # CN() case
+                parent_name=inspect.getmro(obj.__class__)[1].__name__
+                if parent_name != 'object':
+                    return parent_name
+            if obj_name == 'type' or inspect.isclass(obj): return 'classobj'
+            if obj_name == 'Response': return 'response'
+            if obj_name == 'Request': return 'request'
+            return 'instance'
+    except:
+        pass
     #if inspect.isclass(obj): return 'classobj'
     try:
         if obj_name == 'type':
             return obj.__name__
-        return obj_name.lower() # Object Name
+        return obj_name if obj_name in ['kDict','kList','DICT'] else obj_name.lower() # Object Name
     except:
         return 'unknown'
 
@@ -1924,14 +1944,16 @@ class DICT(dict):
     # make dot dict
     __setattr__, __getattr__ = __setitem__, __getitem__
 
-def Dict(*inp,deepcopy=False,copy=False,ignore=[],**opt):
+def Dict(*inp,deepcopy=False,copy=False,replace=False,ignore=[],**opt):
     '''
     Dictionary
     - Define
-    - marge
-    - Update
-    - Append
+    - marge/Update/Append
+    - replace data
     support : Dict, list or tuple with 2 data, dict_items, Django request.data, request data, like path type list([('/a/b',2),('/a/c',3),...]), kDict
+    deepcopy=True: duplicate with deep copy for the dictionary
+    copy=True: duplicate with copy for the dictionary
+    replace=True: if found same key then replace the key's data (not merge,update,append)
     '''
     if not isinstance(ignore,list): ignore=[]
     src={}
@@ -1971,8 +1993,13 @@ def Dict(*inp,deepcopy=False,copy=False,ignore=[],**opt):
         for ii in src:
             if isinstance(ii,tuple) and len(ii) == 2:
                 if ii[0] in ignore: continue
-                if ii[0][0] == '/':
-                    src_a=ii[0].split('/')[1:]
+                elif ii[0] in [None,'']: continue
+                if isinstance(ii[0],str):
+                    #Same as 'a/b/c' and '/a/b/c'
+                    if ii[0][0] == '/':
+                        src_a=ii[0].split('/')[1:]
+                    else:
+                        src_a=ii[0].split('/')
                     tt=tmp
                     for kk in src_a[:-1]:
                         if kk not in tt: tt[kk]={}
@@ -1985,15 +2012,19 @@ def Dict(*inp,deepcopy=False,copy=False,ignore=[],**opt):
         src={}
     #Update Extra inputs
     for ext in inp[1:]:
-        extra=Dict(ext)
-        if Type(extra,dict):
-            src.update(extra)
+        if not isinstance(ext,dict): ext=Dict(ext)
+        if Type(ext,dict):
+            Dict(src,replace=replace,**ext)
     #Update Extra option data
     if opt:
         for i in opt:
             if i in ignore: continue
+            elif i in [None,'']: continue
             if i in src and isinstance(src[i],dict) and isinstance(opt[i],dict):
-                src[i]=Dict(src[i],opt[i])
+                if replace:
+                    src[i]=opt[i]
+                else:
+                    src[i]=Dict(src[i],opt[i])
             else:
                 src[i]=opt[i]
     return src
