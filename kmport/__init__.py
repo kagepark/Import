@@ -1845,7 +1845,7 @@ class DICT(dict):
 
     def __setitem__(self, key, value):
         found=self.get(key,None)
-        if Type(found,('DICT','dict')):
+        if Type(found,('DICT','dict')): #Found key in myself and the key has dictionary
             # change into dict
             super(DICT, self).__setitem__(key, found)
         else:
@@ -2688,6 +2688,7 @@ def FunctionName(parent=0,default=False,history=False,tree=False,args=False,line
      - parent
        0            : my name (default)
        1            : my parent function
+       2-5          : between 2~5's parent functions
        ...          : going top parent function
      - history      : Getting history (return list)
      - tree         : tree  (return list)
@@ -6036,6 +6037,18 @@ def FeedFunc(obj,*inps,**opts):
     if something wrong then return False
     if correct then return output of ran the Function with inputs
     '''
+    #Block Infinity Loop
+    loop_history=FunctionName(parent=10,obj=obj,history=True,line_number=True,filename=True)
+    if len(loop_history) > 1 and loop_history[0] in loop_history[1:]:
+        loop_history_chain='{}({} in {})'.format(loop_history[0][0],loop_history[0][2],loop_history[0][3])
+        for i in loop_history[1:]:
+            if i == loop_history[0]:
+                loop_history_chain=loop_history_chain+'->{}({} in {})'.format(i[0],i[2],i[3])
+                break
+            else:
+                loop_history_chain=loop_history_chain+'->{}'.format(i[0])
+        StdErr('ERROR: Infinity Loop Call in 10 depth: {}\n'.format(loop_history_chain))
+        return False,'Infinity Loop Call in 10 depth: {}'.format(loop_history_chain)
     if Type(obj,'str') and not inspect.isclass(obj): # for str class
         mymod=MyModule(default=False,parent=1)
         if mymod is False:
