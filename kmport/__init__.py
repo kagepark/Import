@@ -1944,7 +1944,7 @@ class DICT(dict):
     # make dot dict
     __setattr__, __getattr__ = __setitem__, __getitem__
 
-def Dict(*inp,deepcopy=False,copy=False,replace=False,ignore=[],**opt):
+def Dict(*inp,deepcopy=False,copy=False,replace=False,ignore=[],ignore_value=[],**opts):
     '''
     Dictionary
     - Define
@@ -1956,18 +1956,21 @@ def Dict(*inp,deepcopy=False,copy=False,replace=False,ignore=[],**opt):
     replace=True: if found same key then replace the key's data (not merge,update,append)
     '''
     if not isinstance(ignore,list): ignore=[]
+    if not isinstance(ignore_value,list): ignore_value=[]
     src={}
     if len(inp) >= 1:
-        if deepcopy or copy:
-            src=Copy(inp[0],deep=deepcopy)
-        else:
-            src=inp[0]
+        if isinstance(inp[0],dict):
+            if deepcopy or copy:
+                src=Copy(inp[0],deep=deepcopy)
+            else:
+                src=inp[0]
     src_type=TypeName(src)
     if src_type in ['ImmutableMultiDict']:
         if len(src) > 0:
             tmp={}
             for ii in src:
                 if ii in ignore: continue
+                elif src[ii] in ignore_value: continue
                 tmp[ii]=src[ii]
             src=tmp
     elif isinstance(src,dict):
@@ -1980,8 +1983,9 @@ def Dict(*inp,deepcopy=False,copy=False,replace=False,ignore=[],**opt):
             if not isinstance(dest,dict): continue
             for i in dest:
                 if i in ignore: continue
+                elif dest[i] in ignore_value: continue
                 if i in src and isinstance(src[i],dict) and isinstance(dest[i],dict):
-                    src[i]=Dict(src[i],dest[i])
+                    src[i]=Dict(src[i],dest[i],deepcopy=deepcopy,copy=copy,replace=replace,ignore=ignore,ignore_value=ignore_value)
                 else:
                     src[i]=dest[i]
     elif src_type in ['dict_items']:
@@ -1994,6 +1998,7 @@ def Dict(*inp,deepcopy=False,copy=False,replace=False,ignore=[],**opt):
             if isinstance(ii,tuple) and len(ii) == 2:
                 if ii[0] in ignore: continue
                 elif ii[0] in [None,'']: continue
+                elif ii[1] in ignore_value: continue
                 if isinstance(ii[0],str):
                     #Same as 'a/b/c' and '/a/b/c'
                     if ii[0][0] == '/':
@@ -2014,19 +2019,20 @@ def Dict(*inp,deepcopy=False,copy=False,replace=False,ignore=[],**opt):
     for ext in inp[1:]:
         if not isinstance(ext,dict): ext=Dict(ext)
         if Type(ext,dict):
-            Dict(src,replace=replace,**ext)
+            Dict(src,deepcopy=deepcopy,copy=copy,replace=replace,ignore=ignore,ignore_value=ignore_value,**ext)
     #Update Extra option data
-    if opt:
-        for i in opt:
+    if opts:
+        for i in opts:
             if i in ignore: continue
             elif i in [None,'']: continue
-            if i in src and isinstance(src[i],dict) and isinstance(opt[i],dict):
+            elif opts[i] in ignore_value: continue
+            if i in src and isinstance(src[i],dict) and isinstance(opts[i],dict):
                 if replace:
-                    src[i]=opt[i]
-                else:
-                    src[i]=Dict(src[i],opt[i])
+                    src[i]=opts[i]
+                elif opts[i]:
+                    src[i]=Dict(src[i],opts[i],deepcopy=deepcopy,copy=copy,replace=replace,ignore=ignore,ignore_value=ignore_value)
             else:
-                src[i]=opt[i]
+                src[i]=opts[i]
     return src
 
 def CompVersion(*inp,**opts):
