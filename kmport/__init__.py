@@ -1831,6 +1831,7 @@ class DICT(dict):
             if isinstance(i,(dict,DICT)):
                 for k in i:
                     self.__setitem__(k,i[k])
+                    #self.__dict__[k]=i[k]
             elif isinstance(i,tuple):
                 self.TupleDict(i)
             elif Type(i,'dict_items'):
@@ -3301,7 +3302,18 @@ def Get(*inps,**opts):
             return obj.__dict__.get(idx)
         return Default(obj,default)
     elif obj_type in ('dict'):
-        return DICT(obj).Get(idx,**opts)
+        #return DICT(obj).Get(idx,**opts)
+        # or data: [1,2,3] or "1|2|3"
+        if isinstance(idx,str): idx=idx.split('|')
+        if isinstance(idx,tuple): # Wrong DATA for range 1~5 in Dictionary
+            return opts.get('default')
+        if isinstance(idx,list):
+            for iii in idx:
+                if obj.get(iii):
+                    return obj.get(iii) 
+            return opts.get('default')
+        else:
+            return obj.get(idx,opts.get('default'))
     elif obj_type in ('function'): #???
         if ok:
             if idx_type == 'str':
