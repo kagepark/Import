@@ -1831,7 +1831,6 @@ class DICT(dict):
             if isinstance(i,(dict,DICT)):
                 for k in i:
                     self.__setitem__(k,i[k])
-                    #self.__dict__[k]=i[k]
             elif isinstance(i,tuple):
                 self.TupleDict(i)
             elif Type(i,'dict_items'):
@@ -1898,7 +1897,9 @@ class DICT(dict):
         elif len(inps) > 1:
             idx=inps[:]
         else:
-            idx=None
+            #idx=None
+
+            return self
         default=opts.get('default')
         err=opts.get('err',opts.get('error',False))
         fill_up=opts.get('fill_up','_fAlsE_')
@@ -1945,7 +1946,7 @@ class DICT(dict):
     # make dot dict
     __setattr__, __getattr__ = __setitem__, __getitem__
 
-def Dict(*inp,deepcopy=False,copy=False,replace=False,ignore=[],ignore_value=[],**opts):
+def Dict(*inp,deepcopy=False,copy=False,replace=False,ignore=[],ignore_value=[],**opt):
     '''
     Dictionary
     - Define
@@ -1960,11 +1961,10 @@ def Dict(*inp,deepcopy=False,copy=False,replace=False,ignore=[],ignore_value=[],
     if not isinstance(ignore_value,list): ignore_value=[]
     src={}
     if len(inp) >= 1:
-        if isinstance(inp[0],dict):
-            if deepcopy or copy:
-                src=Copy(inp[0],deep=deepcopy)
-            else:
-                src=inp[0]
+        if deepcopy or copy:
+            src=Copy(inp[0],deep=deepcopy)
+        else:
+            src=inp[0]
     src_type=TypeName(src)
     if src_type in ['ImmutableMultiDict']:
         if len(src) > 0:
@@ -2020,20 +2020,27 @@ def Dict(*inp,deepcopy=False,copy=False,replace=False,ignore=[],ignore_value=[],
     for ext in inp[1:]:
         if not isinstance(ext,dict): ext=Dict(ext)
         if Type(ext,dict):
-            Dict(src,deepcopy=deepcopy,copy=copy,replace=replace,ignore=ignore,ignore_value=ignore_value,**ext)
+            #Block For duplicated parameters
+            ext['deepcopy']= deepcopy
+            ext['copy']= copy
+            ext['replace']= replace
+            ext['ignore']= ignore
+            ext['ignore_value']= ignore_value
+            #Dict(src,replace=replace,**ext)
+            Dict(src,**ext)
     #Update Extra option data
-    if opts:
-        for i in opts:
+    if opt:
+        for i in opt:
             if i in ignore: continue
             elif i in [None,'']: continue
-            elif opts[i] in ignore_value: continue
-            if i in src and isinstance(src[i],dict) and isinstance(opts[i],dict):
+            elif opt[i] in ignore_value: continue
+            if i in src and isinstance(src[i],dict) and isinstance(opt[i],dict):
                 if replace:
-                    src[i]=opts[i]
-                elif opts[i]:
-                    src[i]=Dict(src[i],opts[i],deepcopy=deepcopy,copy=copy,replace=replace,ignore=ignore,ignore_value=ignore_value)
+                    src[i]=opt[i]
+                else:
+                    src[i]=Dict(src[i],opt[i],deepcopy=deepcopy,copy=copy,replace=replace,ignore=ignore,ignore_value=ignore_value)
             else:
-                src[i]=opts[i]
+                src[i]=opt[i]
     return src
 
 def CompVersion(*inp,**opts):
@@ -3302,18 +3309,7 @@ def Get(*inps,**opts):
             return obj.__dict__.get(idx)
         return Default(obj,default)
     elif obj_type in ('dict'):
-        #return DICT(obj).Get(idx,**opts)
-        # or data: [1,2,3] or "1|2|3"
-        if isinstance(idx,str): idx=idx.split('|')
-        if isinstance(idx,tuple): # Wrong DATA for range 1~5 in Dictionary
-            return opts.get('default')
-        if isinstance(idx,list):
-            for iii in idx:
-                if obj.get(iii):
-                    return obj.get(iii) 
-            return opts.get('default')
-        else:
-            return obj.get(idx,opts.get('default'))
+        return DICT(obj).Get(idx,**opts)
     elif obj_type in ('function'): #???
         if ok:
             if idx_type == 'str':
@@ -3436,8 +3432,14 @@ def Get(*inps,**opts):
             for ii in obj:
                 tmp[ii]=obj[ii]
         return Get(tmp,idx,default,err) 
-    elif obj_type in ('kDict','kList','DICT'): 
-        return Get(obj.Get(),idx,default,err) 
+    elif obj_type in ('kDict','DICT'): 
+        #Block infinity loop
+        #return Get(obj.Get(),idx,default,err)
+        return Get(dict(obj.Get()),idx,default=default,err=err,fill_up=fill_up,idx_only=idx_only,_type=_type,out=out,peel=peel,strip=strip) 
+    elif obj_type in ('kList'): 
+        #Block infinity loop
+        #return Get(obj.Get(),idx,default,err)
+        return Get(list(obj.Get()),idx,default=default,err=err,fill_up=fill_up,idx_only=idx_only,_type=_type,out=out,peel=peel,strip=strip) 
     return OutFormat([],out=out,default=default,org=obj,peel=peel,strip=strip)
 
 def Set(obj,key,value,**opts):
