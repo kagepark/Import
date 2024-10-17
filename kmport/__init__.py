@@ -1974,7 +1974,7 @@ def Dict(*inp,deepcopy=False,copy=False,replace=False,ignore=[],ignore_value=[],
                 elif src[ii] in ignore_value: continue
                 tmp[ii]=src[ii]
             src=tmp
-    elif isinstance(src,dict):
+    elif isinstance(src,dict) and src_type not in ['kDict','DICT']:
         if src_type == 'QueryDict': # Update data at request.data of Django
             try:
                 src._mutable=True
@@ -1991,8 +1991,10 @@ def Dict(*inp,deepcopy=False,copy=False,replace=False,ignore=[],ignore_value=[],
                     src[i]=dest[i]
     elif src_type in ['dict_items']:
         src=dict(src)
-    elif src_type in ['kDict']:
-        src=src.Get()
+#    By pass kDict and DICT
+#    elif src_type in ['kDict','DICT']:
+#        #src=dict(src.Get()) # maybe inifinity loop????, So convert kDict or DICT to dict
+#        src=src.Get() # maybe inifinity loop????, So convert kDict or DICT to dict
     elif src_type in ['list','tuple']:
         tmp={}
         for ii in src:
@@ -2018,8 +2020,11 @@ def Dict(*inp,deepcopy=False,copy=False,replace=False,ignore=[],ignore_value=[],
         src={}
     #Update Extra inputs
     for ext in inp[1:]:
-        if not isinstance(ext,dict): ext=Dict(ext)
-        if Type(ext,dict):
+        #if not isinstance(ext,dict): ext=Dict(ext)
+        #if Type(ext,dict):
+        if not Type(ext,('dict','kDict','DICT')): ext=Dict(ext)
+        if Type(ext,('dict','kDict','DICT')):
+            ext=dict(ext)
             #Block For duplicated parameters
             ext['deepcopy']= deepcopy
             ext['copy']= copy
