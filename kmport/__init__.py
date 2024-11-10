@@ -6471,8 +6471,12 @@ def printf(*msg,**opts):
                         print('print                 :[{}]'.format(start_newline+msg_str+new_line))
                         print('-----------------------------------------')
                     log_p=True  # writing to log_file
-                    with open(ii,'a+') as f:
-                        f.write(start_newline+msg_str+new_line)
+                    try:
+                        with open(ii,'a+') as f:
+                            f.write(start_newline+msg_str+new_line)
+                    except Exception as e: 
+                        StdErr(e)
+                        return
                     if new_line:
                         printf_newline_info.Del(Bytes(ii))
                     else:
