@@ -9032,6 +9032,123 @@ class kRT:
     def status(self):
         return self.rc
 
+class kCursor:
+    def __init__(self,log=None,log_level=0):
+        self.log=log
+        self.log_level=log_level
+
+    def MoveLeft(self,cnt=0):
+        #sys.stdout.write(f'\033[{cnt}D')
+        printf(f'\033[{cnt}D',direct=True,log=self.log,log_level=self.log_level)
+
+    def MoveFirst(self):
+        #sys.stdout.write('\r')
+        printf('\r',direct=True,log=self.log,log_level=self.log_level)
+
+    def MoveHome(self):
+        #sys.stdout.write('\033[H')
+        printf('\033[H',direct=True,log=self.log,log_level=self.log_level)
+
+    def MoveStart(self):
+        #sys.stdout.write('\033[0G')
+        printf('\033[0G',direct=True,log=self.log,log_level=self.log_level)
+
+    def DelLeft(self,cnt=0):
+        for _ in range(cnt):
+            #sys.stdout.write('\033[1D \033[1D')
+            printf('\033[1D \033[1D',direct=True,log=self.log,log_level=self.log_level)
+
+    def DelLineAfter(self):
+        #sys.stdout.write("\033[K")
+        printf('\033[K',direct=True,log=self.log,log_level=self.log_level)
+
+    def DelCurrentLine(self):
+        self.MoveStart()
+        self.DelLineAfter()
+
+def Bracket(msg,bracket=None):
+    if bracket:
+        if isinstance(bracket,str) and len(bracket) == 2:
+            return f'{bracket[0]}{msg}{bracket[1]}'
+    return msg
+
+class kProgress:
+    def __init__(self,msg=None,bracket=None,rotates=['|','/','-','\\'],log=None,log_level=0):
+        self.rotates=rotates
+        self.rotate_num=len(self.rotates)
+        self.rr=0 #Rotate number
+        self.msg=msg
+        self.old_len=0
+        self.bracket=bracket
+        self.stop=False
+        self.log=log
+        self.log_level=log_level
+
+    def Ing(self,symbol='.',loop=False,interval=1):
+        if loop:
+            while True:
+                printf(symbol,direct=True,log=self.log,log_level=self.log_level)
+                time.sleep(interval)
+        else:
+            printf(symbol,direct=True,log=self.log,log_level=self.log_level)
+#        sys.stdout.write(symbol)
+#        sys.stdout.flush()
+
+    def Percent(self,percent,msg=None):
+        if not msg: msg=self.msg
+        if msg:
+            kCursor().DelCurrentLine()
+            msg = f'{msg} : {Bracket("%3.2f%%"%(percent),self.bracket)}'
+            printf(msg,direct=True,log=self.log,log_level=self.log_level)
+            #sys.stdout.write(msg)
+            #sys.stdout.flush()
+        else:
+            kCursor().DelLeft(self.old_len)
+            msg=f'{Bracket("%3.2f%%"%(percent),self.bracket)}'
+            printf(msg,direct=True,log=self.log,log_level=self.log_level)
+            #sys.stdout.write(msg)
+            #sys.stdout.flush()
+            self.old_len=len(msg)
+
+    def Rotate(self,msg=None,loop=False,interval=1):
+        if not msg: msg=self.msg
+        if msg:
+            kCursor().DelCurrentLine()
+            msg = f'{msg} : {Bracket(self.rotates[self.rr%self.rotate_num],self.bracket)}'
+            printf(msg,direct=True,log=self.log,log_level=self.log_level)
+            #sys.stdout.write(msg)
+            #sys.stdout.flush()
+            self.rr+=1
+        else:
+            if loop:
+                while True:
+                    kCursor().DelLeft(self.old_len)
+                    msg=f'{Bracket(self.rotates[self.rr%self.rotate_num],self.bracket)}'
+                    printf(msg,direct=True,log=self.log,log_level=self.log_level)
+                    self.old_len=len(msg)
+                    self.rr+=1
+                    time.sleep(interval)
+            else:
+                kCursor().DelLeft(self.old_len)
+                msg=f'{Bracket(self.rotates[self.rr%self.rotate_num],self.bracket)}'
+                printf(msg,direct=True,log=self.log,log_level=self.log_level)
+                #sys.stdout.write(msg)
+                #sys.stdout.flush()
+                self.old_len=len(msg)
+                self.rr+=1
+
+    def Threads(self,mode='ing',symbol='.',interval=1):
+        if mode=='rotate':
+            t=kThread(target=self.Rotate,args=(None,True,interval,))
+        else:
+            t=kThread(target=self.Ing,args=(symbol,True,interval,))
+        t.start()
+        return t
+#        self.stop=False
+#        ppth=Thread(target=self.Ing,args=(lambda:self.stop,))
+#        ppth.start()
+#        return self
+
 
 #if __name__ == "__main__":
 #    # Integer
