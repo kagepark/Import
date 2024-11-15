@@ -17,6 +17,7 @@ import json
 import gzip
 import zlib
 import time
+import uuid
 import fcntl
 import random
 import shutil
