@@ -2697,9 +2697,13 @@ def Frame2Function(obj,default=False):
     #if obj_type == 'function': return obj
     if IsFunction(obj): return obj
     if obj_type == 'frameinfo':
-        return gc.get_referrers(obj.frame.f_code)[0]
+        o_frame_f_code=gc.get_referrers(obj.frame.f_code)
+        if isinstance(o_frame_f_code,(list,tuple)) and o_frame_f_code:
+            return o_frame_f_code[0]
     elif obj_type == 'frame':
-        return gc.get_referrers(obj.f_code)[0]
+        o_f_code=gc.get_referrers(obj.f_code)
+        if isinstance(o_f_code,(list,tuple)) and o_f_code:
+            return o_f_code[0]
     return default
 
 def FunctionName(parent=0,default=False,history=False,tree=False,args=False,line_number=False,full_filename=False,filename=False,obj=False,show=False):
