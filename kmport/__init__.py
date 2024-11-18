@@ -7071,7 +7071,7 @@ def packet_head(sock,key='kg',retry=0,retry_timeout=5,keep_retry=False,timeout=1
     while True:
         if ClosedSocket(sock):
             if retry <= 0:
-                return False,'Already closed the socket'
+                return False,'Already closed the socket',None,None
             retry-=1
             time.sleep(retry_timeout)
             continue
