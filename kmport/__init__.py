@@ -47,6 +47,7 @@ printf_caller_name=False
 printf_scr_dbg=False
 printf_ignore_empty=True
 printf_dbg_empty=False
+krc_ext='python'
 
 krc_define={
   'GOOD':[True,'True','Good','Ok','Pass','Sure',{'OK'}],
@@ -2474,7 +2475,8 @@ def Import(*inps,**opts):
             base_lib_path.append('{}/.local/lib/python3.6/site-packages'.format(home))
         for ii in base_lib_path:
             if os.path.isdir(ii) and not ii in sys.path:
-                sys.path.append(ii)
+                #sys.path.append(ii)
+                sys.path.insert(0,ii)
     if os.getcwd() not in sys.path: sys.path=[os.getcwd()]+sys.path
 
     if not virtual_env and install_account in ['user','--user','personal','myaccount','account','myself']:
@@ -5955,14 +5957,26 @@ def Replace(src,replace_what,replace_to,default=None,newline='\n'):
         tmp.append(Join(tt,replace_to) if tt else ii)
     return Join(tmp,newline)
 
-def krc(rt=None,chk='_',rtd=None,default=False,mode=None,ext='shell'):
+def SehllToPythonRC(rc):
+    rc=Int(rc,default='org')
+    if type(rc).__ == 'int':
+        if rc == 0: return 1
+        elif rc == 1: return 0
+        return rc
+    return rc
+
+#def krc(rt=None,chk='_',rtd=None,default=False,mode=None,ext='shell'):
+def krc(rt=None,ext=None,chk='_',rtd=None,default=False,mode=None):
     global krc_define
+    global krc_ext
+    if not ext: ext=krc_ext
     nrtd=Copy(krc_define,deep=True) if rtd is None else Copy(rtd,deep=True)
     if ext == 'shell': # python
         if not IsIn(0,nrtd['GOOD']): nrtd['GOOD'].append(0)
         if not IsIn(1,nrtd['ERRO']): nrtd['ERRO']=nrtd['ERRO']+[1,126,128,130,255]
         if not IsIn(127,nrtd['NFND']): nrtd['NFND'].append(127)
-    elif ext == 'python': # python
+    #elif ext == 'python': # python
+    else: # python
         if not IsIn(1,nrtd['GOOD']): nrtd['GOOD'].append(1)# Python's True level
         if not IsIn(0,nrtd['FAIL']): nrtd['FAIL'].append(0)# Python's False level
     '''
