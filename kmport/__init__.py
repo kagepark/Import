@@ -2238,6 +2238,7 @@ def Install(module,install_account='',mode=None,upgrade=False,version=None,force
     else:
         install_cmd=['python3','-m','pip','install']
     if PyVer('>=','3.2'): 
+        #pip3 install setuptools  # for pkg_resources 
         import pkg_resources
         pkn=pkg_resources.working_set.__dict__.get('by_key',{}).get(install_name)
         if pkn:
