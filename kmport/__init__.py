@@ -4556,7 +4556,7 @@ class TIME:
             return self.Print(timedata=timedata) if IsIn(mode,[str,'str','string']) else int(timedata.timestamp()) if IsIn(mode[int,'int','integer']) else timedata
         return False
 
-def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin/bash',path=None,progress=False,progress_pre_new_line=False,progress_post_new_line=True,log=None,env={},full_path=None,remove_path=None,remove_all_path=None,default_timeout=3600,env_out=False,cd=False,keep_cwd=False,decode=None):
+def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin/bash',path=None,progress=False,progress_pre_new_line=False,progress_post_new_line=True,log=None,env={},full_path=None,remove_path=None,remove_all_path=None,default_timeout=3600,env_out=False,cd=False,keep_cwd=False,decode=None,interactive_background_stderr_log=True):
     '''
     Interactive shell
     path: append the path to existing system path
@@ -4564,6 +4564,7 @@ def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin
     remove_path: remove front remove_path at full_path
     remove_all_path: remove remove_all_path in full_path
     decode: character decoding (default : ISO-8859-1), it changed to Str() default
+    interactive_background_stderr_log:default True,interactive case, print Standard Error log in background
     '''
     # OS environments
     os_env=dict(os.environ)
@@ -4602,7 +4603,7 @@ def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin
     if not Type(cmd,'str',data=True):
         return -1,'wrong command information :{0}'.format(cmd),'',start_time.Int('init'),start_time.Now(int),cmd,path
 
-    ansi_escape = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')
+    #ansi_escape = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')
     Popen=subprocess.Popen
     PIPE=subprocess.PIPE
     STDOUT=subprocess.PIPE
@@ -4654,23 +4655,31 @@ def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin
     else:
         p = Popen(cmd_form(cmd) , shell=True, stdout=PIPE, stderr=STDOUT,executable=executable, env=os_env)
 
-    #################################
-    #Need error log out from thread to output
-    #################################
-    def write_err(p):
-       while True:
-           ee=p.stderr.read(1)
-           if not ee: break
-           if isinstance(ee,bytes):
-              sys.stderr.buffer.write(ee) # write bytes data to stdout
-           else:
-              sys.stderr.write(ee) # write bytes data to stdout
-           sys.stderr.flush()
-
     if interactive:
+       #################################
+       #Need error log out from thread to output
+       #################################
+       def write_err(stop,p,err,interactive_background_stderr_log=True,decode=None):
+          _t_=[]
+          while True:
+              ee=p.stderr.read(1)
+              if stop(): break
+              if not ee:
+                  if interactive_background_stderr_log:
+                      sys.stderr.write(''.join(_t_)) # write bytes data to stdout
+                      sys.stderr.flush()
+                  _t_=[]
+              if ee:
+                  ees=Str(ee,encode=decode)
+                  _t_.append(ees)
+                  err.append(ees)
+          p.stderr.close()
+
        ########### STD Error
-       err = Thread(target=write_err, args=(p,))
-       err.start()
+       err=[]
+       stop_err_threads=False
+       err_t = Thread(target=write_err, args=(lambda:stop_err_threads,p,err,interactive_background_stderr_log,decode,))
+       err_t.start()
        ########### STD Out
        while True:
           d=p.stdout.read(1)
@@ -4683,18 +4692,10 @@ def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin
               sys.stdout.write(d) # write str data to stdout
               out+=d.replace('\r','')
           sys.stdout.flush()
-       p.stdout.close()
-
-       ########### OLD STD Error, if starting from error log then can't see
-       #err=p.stderr.read()
-       #if err:
-       #   if isinstance(err,bytes):
-       #       sys.stderr.buffer.write(err)
-       #   else:
-       #       sys.stderr.write(err)
-       #   sys.stderr.flush()
-       #p.stderr.close()
        p.wait()
+       stop_err_threads=True
+       p.stdout.close()
+       err=''.join(err) if err else ''
     else:
        if progress:
            stop_threads=False
@@ -4732,8 +4733,8 @@ def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin
     out=Str(out,encode=decode).rstrip()
     err=Str(err,encode=decode).rstrip()
     if ansi:
-        out=ansi_escape.sub('',out)
-        err=ansi_escape.sub('',err)
+        out=CleanAnsi(out)
+        err=CleanAnsi(err)
     if env_out:
         return p.returncode, out, err,start_time.Int('init'),start_time.Now(int),cmd,path,os_env
     return p.returncode, out, err,start_time.Int('init'),start_time.Now(int),cmd,path
@@ -6494,8 +6495,22 @@ def printf(*msg,**opts):
                     try:
                         with open(ii,'a+') as f:
                             f.write(start_newline+msg_str+new_line)
+                    except FileNotFoundError:
+                        err_msg="Error: Directory '{os.path.basedir(ii)}' not found"
+                        StdErr(err_msg)
+                        if 'r' in dsp:
+                            return err_msg
+                        return
+                    except PermissionError:
+                        err_msg="Error: Permission denied for '{ii}'"
+                        StdErr(err_msg)
+                        if 'r' in dsp:
+                            return err_msg
+                        return
                     except Exception as e: 
                         StdErr(e)
+                        if 'r' in dsp:
+                            return e
                         return
                     if new_line:
                         printf_newline_info.Del(Bytes(ii))
