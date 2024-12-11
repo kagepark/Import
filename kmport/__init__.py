@@ -5781,11 +5781,16 @@ class LIST(list):
         except:
             print('Not support mixed string and int')
 
-def Iterable(inp,default=[],split=None):
+def Iterable(inp,default=[],split=None,force=False):
     if isinstance(inp,(list,tuple,dict)):
         return inp
-    elif isinstance(inp,str) and isinstance(split,str) and split:
-        return inp.split(split)
+    elif isinstance(inp,str):
+        if isinstance(split,str) and split:
+            return inp.split(split)
+        elif force:
+            return [inp]
+    elif force:
+        return [inp]
     return default
 
 def List(*inps,**opts):
@@ -6496,13 +6501,13 @@ def printf(*msg,**opts):
                         with open(ii,'a+') as f:
                             f.write(start_newline+msg_str+new_line)
                     except FileNotFoundError:
-                        err_msg="Error: Directory '{os.path.basedir(ii)}' not found"
+                        err_msg=f"Error: Directory '{os.path.basedir(ii)}' not found"
                         StdErr(err_msg)
                         if 'r' in dsp:
                             return err_msg
                         return
                     except PermissionError:
-                        err_msg="Error: Permission denied for '{ii}'"
+                        err_msg=f"Error: Permission denied for '{ii}'"
                         StdErr(err_msg)
                         if 'r' in dsp:
                             return err_msg
