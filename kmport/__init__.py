@@ -6501,7 +6501,7 @@ def printf(*msg,**opts):
                         with open(ii,'a+') as f:
                             f.write(start_newline+msg_str+new_line)
                     except FileNotFoundError:
-                        err_msg=f"Error: Directory '{os.path.basedir(ii)}' not found"
+                        err_msg=f"Error: Directory '{os.path.dirname(ii)}' not found"
                         StdErr(err_msg)
                         if 'r' in dsp:
                             return err_msg
