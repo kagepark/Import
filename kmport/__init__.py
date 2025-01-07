@@ -49,6 +49,9 @@ printf_ignore_empty=True
 printf_dbg_empty=False
 krc_ext='python'
 
+# Recusion Limit Setup
+#sys.setrecursionlimit(2000)
+
 krc_define={
   'GOOD':[True,'True','Good','Ok','Pass','Sure',{'OK'}],
   'FAIL':[False,'False','Fail',{'FAL'}],
@@ -933,17 +936,22 @@ def Next(src,step=0,out=None,default='org'):
 
 def Copy(src,deep=False):
     '''
-    Copy data 
+    Copy data (list,tuple,dict,object,....)
     '''
-    if isinstance(src,(list,tuple)): return src[:]
-    if isinstance(src,dict):
-        return copy.deepcopy(src) if deep else src.copy()
-    if isinstance(src,str): return '{}'.format(src)
-    if isinstance(src,bool): return src
-    if isinstance(src,int): return int('{}'.format(src))
-    if isinstance(src,float): return float('{}'.format(src))
-    if PyVer(2):
-        if isinstance(src,long): return long('{}'.format(src))
+    try:
+        return copy.deepcopy(src)
+    #if isinstance(src,list) or isinstance(src,tuple): 
+    #    return src[:]
+    #if isinstance(src,dict):
+    #    return copy.deepcopy(src) if deep else src.copy()
+    #if isinstance(src,str): return '{}'.format(src)
+    #if isinstance(src,bool): return src
+    #if isinstance(src,int): return int('{}'.format(src))
+    #if isinstance(src,float): return float('{}'.format(src))
+    #if PyVer(2):
+    #    if isinstance(src,long): return long('{}'.format(src))
+    except:
+        pass
     return src
 
 def Insert(src,*inps,**opts):
