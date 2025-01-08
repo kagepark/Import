@@ -4999,7 +4999,11 @@ def Sort(src,reverse=False,func=None,order=None,field=None,base='key',sym=None):
         return lst
         #return [i[0] for i in lst]
 
-def VersionSort(data,sym=',',rev=False):
+def VersionSort(data,sym=',',rev=False,sort_split='',sort_id=0,version_symbols='.|-|:|_'):
+    #sym: data split symbol
+    #sort_split: special symbol for sort split
+    #sort_id   : special sort id(default(0))
+    #version_symbols: version split symbols (.|- => . or - (| is split symbol))
     def DictKeysToList(data,ver='',out=[]):
         if isinstance(data,dict):
             for i in data:
@@ -5015,11 +5019,29 @@ def VersionSort(data,sym=',',rev=False):
     if len(data) < 2: return data
     sort_data={}
     out=[]
-    #convert list to dict format
+    #convert list to dict format for sorting
     for i in data:
         if not i: continue
         tt=sort_data
-        j_a=Split(i,'.|-|:|_')
+        #If being special sort_split symbol
+        if sort_split:
+            j_a=Split(i,sort_split) #Special sort split then
+            #If being sort_id
+            if IsInt(sort_id,mode='int') and sort_id > 0 and len(j_a) > sort_id: # move sort_id to first
+                j_a=MoveData(j_a,to='first',from_idx=sort_id)
+            if len(j_a) > 1:
+                j_a_=[]
+                for ss in j_a[1:]:
+                    j_a_=j_a_+Split(ss,version_symbols)
+                if j_a_:
+                    j_a=j_a[:1]
+                    for _ in j_a_:
+                        j_a.append(_)
+        else:
+            j_a=Split(i,version_symbols)
+            #If being sort_id
+            if IsInt(sort_id,mode='int') and sort_id > 0 and len(j_a) > sort_id: # move sort_id to first
+                j_a=MoveData(j_a,to='first',from_idx=sort_id)
         j_m=len(j_a)-1
         for j in range(0,j_m+1):
             j_a[j]=Int(j_a[j])
