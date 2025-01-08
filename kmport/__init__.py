@@ -939,18 +939,19 @@ def Copy(src,deep=False):
     Copy data (list,tuple,dict,object,....)
     '''
     try:
-        return copy.deepcopy(src)
-    #if isinstance(src,list) or isinstance(src,tuple): 
-    #    return src[:]
-    #if isinstance(src,dict):
-    #    return copy.deepcopy(src) if deep else src.copy()
-    #if isinstance(src,str): return '{}'.format(src)
-    #if isinstance(src,bool): return src
-    #if isinstance(src,int): return int('{}'.format(src))
-    #if isinstance(src,float): return float('{}'.format(src))
-    #if PyVer(2):
-    #    if isinstance(src,long): return long('{}'.format(src))
-    except:
+    #    return copy.deepcopy(src)
+        if isinstance(src,list) or isinstance(src,tuple): 
+            return src[:]
+        if isinstance(src,dict):
+            return copy.deepcopy(src) if deep else src.copy()
+        #if isinstance(src,str): return '{}'.format(src)
+        #if isinstance(src,bool): return src
+        #if isinstance(src,int): return int('{}'.format(src))
+        #if isinstance(src,float): return float('{}'.format(src))
+        #if PyVer(2):
+        #    if isinstance(src,long): return long('{}'.format(src))
+    except Exception as e:
+        #print('>>>Copy error:',e)
         pass
     return src
 
@@ -1835,6 +1836,20 @@ def Max(obj,key=False,err=True):
         else:
             return obj
 
+def has_recursion(data, seen=None):
+    if seen is None:
+        seen = set()
+    
+    if id(data) in seen:
+        return True  # Recursion detected
+    seen.add(id(data))
+    
+    if isinstance(data, dict):
+        return any(has_recursion(v, seen) for v in data.values())
+    elif isinstance(data, list) or isinstance(data, tuple):
+        return any(has_recursion(v, seen) for v in data)
+    return False
+
 class DICT(dict):
     def __init__(self, *inps,**opts):
         for i in inps:
@@ -1859,8 +1874,8 @@ class DICT(dict):
             # change into dict
             super(DICT, self).__setitem__(key, found)
         else:
-            # make a sub dict to dot dict
-            if isinstance(value,dict) and not isinstance(value,DICT):
+            # make a sub dict to dot dict, when exist value and not recursive and DICT
+            if isinstance(value,dict) and value and not has_recursion(value) and not isinstance(value,DICT):
                 value=DICT(value)
             # set dot type dict to sub dict
             super(DICT, self).__setitem__(key, value)
