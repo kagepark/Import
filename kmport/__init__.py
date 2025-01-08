@@ -5027,7 +5027,7 @@ def VersionSort(data,sym=',',rev=False,sort_split='',sort_id=0,version_symbols='
         if sort_split:
             j_a=Split(i,sort_split) #Special sort split then
             #If being sort_id
-            if IsInt(sort_id,mode='int') and sort_id > 0 and len(j_a) > sort_id: # move sort_id to first
+            if IsInt(sort_id,mode='int') and sort_id != 0 and len(j_a) > sort_id: # move sort_id to first
                 j_a=MoveData(j_a,to='first',from_idx=sort_id)
             if len(j_a) > 1:
                 j_a_=[]
@@ -5040,7 +5040,7 @@ def VersionSort(data,sym=',',rev=False,sort_split='',sort_id=0,version_symbols='
         else:
             j_a=Split(i,version_symbols)
             #If being sort_id
-            if IsInt(sort_id,mode='int') and sort_id > 0 and len(j_a) > sort_id: # move sort_id to first
+            if IsInt(sort_id,mode='int') and sort_id != 0 and len(j_a) > sort_id: # move sort_id to first
                 j_a=MoveData(j_a,to='first',from_idx=sort_id)
         j_m=len(j_a)-1
         for j in range(0,j_m+1):
