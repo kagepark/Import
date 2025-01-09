@@ -2041,7 +2041,8 @@ def Dict(*inp,deepcopy=False,copy=False,replace=False,ignore=[],ignore_value=[],
                 else:
                     tmp[ii[0]]=ii[1]
         src=tmp
-    else:
+    #else:
+    if not Type(src,('dict','kDict','DICT')): #If wrong src data then ignore
         src={}
     #Update Extra inputs
     for ext in inp[1:]:
