@@ -2011,6 +2011,8 @@ def Dict(*inp,deepcopy=False,copy=False,replace=False,ignore=[],ignore_value=[],
                 if i in ignore: continue
                 elif dest[i] in ignore_value: continue
                 if i in src and isinstance(src[i],dict) and isinstance(dest[i],dict):
+                    if src[i] == dest[i]: continue
+                    if has_recursion(src[i]) or has_recursion(dest[i]): continue
                     src[i]=Dict(src[i],dest[i],deepcopy=deepcopy,copy=copy,replace=replace,ignore=ignore,ignore_value=ignore_value)
                 else:
                     src[i]=dest[i]
@@ -2041,8 +2043,8 @@ def Dict(*inp,deepcopy=False,copy=False,replace=False,ignore=[],ignore_value=[],
                 else:
                     tmp[ii[0]]=ii[1]
         src=tmp
-    #else:
-    if not Type(src,('dict','kDict','DICT')): #If wrong src data then ignore
+    else:
+    #if not Type(src,('dict','kDict','DICT')): #If wrong src data then ignore
         src={}
     #Update Extra inputs
     for ext in inp[1:]:
@@ -2050,15 +2052,19 @@ def Dict(*inp,deepcopy=False,copy=False,replace=False,ignore=[],ignore_value=[],
         #if Type(ext,dict):
         if not Type(ext,('dict','kDict','DICT')): ext=Dict(ext)
         if Type(ext,('dict','kDict','DICT')):
-            ext=dict(ext)
-            #Block For duplicated parameters
-            ext['deepcopy']= deepcopy
-            ext['copy']= copy
-            ext['replace']= replace
-            ext['ignore']= ignore
-            ext['ignore_value']= ignore_value
-            #Dict(src,replace=replace,**ext)
-            Dict(src,**ext)
+            try:
+                ext=dict(ext)
+                #Block For duplicated parameters
+                if isinstance(ext,dict):
+                    ext['deepcopy']= deepcopy
+                    ext['copy']= copy
+                    ext['replace']= replace
+                    ext['ignore']= ignore
+                    ext['ignore_value']= ignore_value
+                    #Dict(src,replace=replace,**ext)
+                    Dict(src,**ext)
+            except:
+                pass
     #Update Extra option data
     if opt:
         for i in opt:
