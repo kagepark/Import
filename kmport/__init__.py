@@ -32,8 +32,10 @@ import getpass
 import warnings
 import datetime
 import platform
+import ensurepip
 import traceback
 import subprocess
+import importlib.util
 from threading import Thread
 #from datetime import datetime
 from importlib import import_module
@@ -2215,6 +2217,10 @@ def GlobalEnv(): # Get my parent's globals()
     '''
     return dict(inspect.getmembers(inspect.stack()[1][0]))["f_globals"]
 
+def IsModuleInstalled(module_name):
+    spec=importlib.util.find_spec(module_name)
+    return spec is not None
+
 def Install(module,install_account='',mode=None,upgrade=False,version=None,force=False,pkg_map=None,err=False,install_name=None):
     '''
     Install python module file
@@ -2253,9 +2259,27 @@ def Install(module,install_account='',mode=None,upgrade=False,version=None,force
            'bdist_wheel':'wheel',
         }
 
-    pip_main=subprocess.check_call
-    if not pip_main:
-        print('!! PIP module not found')
+#    try:
+#        #Check pip installed or not
+#        import pip
+#    except ImportError:
+#        #If not installed it then install
+#        try:
+#            ensurepip.bootstrap()
+#        except Exception as e:
+#            print('An error occured while installing pip: {}'.format(e))
+#            return False
+    if not IsModuleInstalled('pip'):
+        #If not installed it then install
+        try:
+            ensurepip.bootstrap()
+        except Exception as e:
+            print('An error occured while installing pip: {}'.format(e))
+            return False
+    try:
+        pip_main=subprocess.check_call
+    except Exception as e:
+        print('!! Issue for subprocess.check_call : {}'.format(e))
         return False
 
     pkg_name=module.split('.')[0]
@@ -4343,7 +4367,7 @@ class WEB:
             except:
                 pass
             #except requests.exceptions.RequestException as e:
-            err_msg='Server({}) has no response'.format(chk_dest)
+            err_msg='Server({}) has no response for {}'.format(chk_dest,host_url)
             if dbg:
                 printf('Server({}) has no response (wait {}/{} (10s))'.format(chk_dest,j,max_try),log=log,mode='s')
             else:
