@@ -9313,16 +9313,25 @@ class Environment:
         return instance
 
     def get(self, key=None, default=None):
+        # Get key's value or full dict
         if key:
             return self.settings.get(key, default)
         else:
             return self.settings
 
+    def exist(self, key, default=False):
+        # Check being key or not
+        if key in self.settings:
+            return True
+        return default
+
     def set(self, key, value):
+        # Set value at the key
         self.settings[key] = value
         self.updated_at = datetime.datetime.now()
 
     def remove(self, key):  # Removed default parameter as it's not used
+        # remove key if exisint the key
         if key in self.settings:
             del self.settings[key]
             self.updated_at = datetime.datetime.now()
@@ -9331,6 +9340,7 @@ class Environment:
             return False
 
     def update(self, **kwargs):
+        # Update dict
         for k, v in kwargs.items():
             if self.settings.get(k) != v:
                 self.settings[k] = v
