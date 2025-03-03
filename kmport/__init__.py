@@ -32,12 +32,9 @@ import getpass
 import warnings
 import datetime
 import platform
-import ensurepip
 import traceback
 import subprocess
-import importlib.util
 from threading import Thread
-#from datetime import datetime
 from importlib import import_module
 # If importing "from kmport import *" then
 # adding "global  printf_log_base",
@@ -2217,10 +2214,6 @@ def GlobalEnv(): # Get my parent's globals()
     '''
     return dict(inspect.getmembers(inspect.stack()[1][0]))["f_globals"]
 
-def IsModuleInstalled(module_name):
-    spec=importlib.util.find_spec(module_name)
-    return spec is not None
-
 def Install(module,install_account='',mode=None,upgrade=False,version=None,force=False,pkg_map=None,err=False,install_name=None):
     '''
     Install python module file
@@ -2259,27 +2252,9 @@ def Install(module,install_account='',mode=None,upgrade=False,version=None,force
            'bdist_wheel':'wheel',
         }
 
-#    try:
-#        #Check pip installed or not
-#        import pip
-#    except ImportError:
-#        #If not installed it then install
-#        try:
-#            ensurepip.bootstrap()
-#        except Exception as e:
-#            print('An error occured while installing pip: {}'.format(e))
-#            return False
-    if not IsModuleInstalled('pip'):
-        #If not installed it then install
-        try:
-            ensurepip.bootstrap()
-        except Exception as e:
-            print('An error occured while installing pip: {}'.format(e))
-            return False
-    try:
-        pip_main=subprocess.check_call
-    except Exception as e:
-        print('!! Issue for subprocess.check_call : {}'.format(e))
+    pip_main=subprocess.check_call
+    if not pip_main:
+        print('!! PIP module not found')
         return False
 
     pkg_name=module.split('.')[0]
@@ -4367,7 +4342,7 @@ class WEB:
             except:
                 pass
             #except requests.exceptions.RequestException as e:
-            err_msg='Server({}) has no response for {}'.format(chk_dest,host_url)
+            err_msg='Server({}) has no response'.format(chk_dest)
             if dbg:
                 printf('Server({}) has no response (wait {}/{} (10s))'.format(chk_dest,j,max_try),log=log,mode='s')
             else:
@@ -5906,7 +5881,7 @@ def List(*inps,**opts):
 
     tuple2list=opts.get('tuple2list',True)
     mode=opts.get('mode','auto')
-    ignores=opts.get('ignores')
+    ignores=opts.get('ignores',opts.get('ignore',opts.get('not_allow')))
     if isinstance(ignores,str):
         ignores=tuple(ignores.split(','))
     if isinstance(ignores,(list,tuple)):
@@ -5915,6 +5890,10 @@ def List(*inps,**opts):
     if len(inps) == 0 : return rt
     if Type(inps[0],('list','LIST')):
         rt=inps[0]
+    elif Type(inps[0],str) and inps[0]:  #String to List
+        split_symbol=opts.get('symbol',opts.get('sym'))
+        if isinstance(split_symbol,str) and len(split_symbol) == 1:
+            rt=inps[0].split(split_symbol)
     elif Type(inps[0],tuple):
         if tuple2list:
             rt=list(inps[0])
@@ -5937,7 +5916,7 @@ def List(*inps,**opts):
         else:
             rt=list(inps[0])
     else:
-        if isinstance(ignores,tuple) and (Type(inps[0],ignores) or IsIn(inps[0],ignores)):
+        if isinstance(ignores,tuple) and (Type(inps[0],ignores) or IsIn(inps[0],ignores) or IsIn('all',ignores)):
             pass
         else:
             rt=[inps[0]]
@@ -9266,6 +9245,97 @@ class kProgress:
 #        return self
 
 
+class Environment:
+    """
+    Sample class)
+    class A:
+        def __init__(self,**opts):
+            self.env=Environment(**opts)
+        def run(self):
+            print(f"ENV: {self.env.__dict__}")
+
+    class B:
+        def __init__(self,**opts):
+            self.env=Environment(**opts)
+        def run(self):
+            print(f"ENV: {self.env.__dict__}")
+
+    example1)
+        Environment(a=1,b=2)
+        a=A()
+        b=B()
+        a.run()
+        b.run()
+
+    example2)
+        a=A(a=1,b=2)
+        b=B()
+        a.run()
+        b.run()
+
+    example3)
+        a=A(a=1,b=2)
+        b=B(b=4,c=5)
+        a.run()
+        b.run()
+
+    example4)
+        Environment(a=1,b=2)
+        a=A(m=3)
+        b=B(n=4)
+        a.run()
+        b.run()
+
+    example5)
+        import env  # This class module file
+        env.Environment(a=1,b=2)
+        a=A(m=3) # need update to env.Environment(**opts) for env module 
+        b=B(n=4) # need update to env.Environment(**opts) for env module 
+        a.run()
+        b.run()
+    """
+
+    _instances = {}  # Dictionary to store instances with different group names
+
+    def __new__(cls, name='settings', **kwargs):
+        if not name or not isinstance(name,str): name='settings'
+        if name not in cls._instances:
+            instance = super().__new__(cls)
+            instance._name = name  # Store the group name
+            instance.settings = kwargs
+            instance.updated_at = datetime.datetime.now()
+            cls._instances[name] = instance
+        else:
+            instance = cls._instances[name]
+            for k, v in kwargs.items():
+                instance.settings[k] = v
+                instance.updated_at = datetime.datetime.now()
+        return instance
+
+    def get(self, key=None, default=None):
+        if key:
+            return self.settings.get(key, default)
+        else:
+            return self.settings
+
+    def set(self, key, value):
+        self.settings[key] = value
+        self.updated_at = datetime.datetime.now()
+
+    def remove(self, key):  # Removed default parameter as it's not used
+        if key in self.settings:
+            del self.settings[key]
+            self.updated_at = datetime.datetime.now()
+            return True
+        else:
+            return False
+
+    def update(self, **kwargs):
+        for k, v in kwargs.items():
+            if self.settings.get(k) != v:
+                self.settings[k] = v
+                self.updated_at = datetime.datetime.now()
+        
 #if __name__ == "__main__":
 #    # Integer
 #    print("Get(12345):",Get(12345))
