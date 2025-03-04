@@ -7255,14 +7255,34 @@ def cat(filename,**opts):
     no_first_newline=opts.get('no_first_newline',False)
     log=opts.get('log')
 
-    if IsNone(filename):
-        printf('Filename is None',log=log,mode='d')
+    if IsNone(filename) or not isinstance(filename,str):
+        printf('Filename is None',log=log,mode='d' if log else 's')
         return default
+
+    if filename.startswith('https://') or filename.startswith('http://') or filename.startswith('ftp://'):
+        Import('import requests')
+        try:
+            r=requests.head(filename)
+            if r.status_code==200:
+                data=requests.get(filename).text
+                if byte:
+                    return Bytes(data)
+                return data
+            elif r.status_code == 404:
+                printf('{} not found'.format(filename),log=log,mode='d' if log else 's')
+                return default
+            else:
+                printf(f'Unexpected response from {filename}: {r.status_code}',log=log,mode='d' if log else 's')
+                return default
+        except Exception as e:
+            printf(f'Unexpected error from {filename}: {e}',log=log,mode='d' if log else 's')
+            return default
+
     if os.path.isdir(filename):
-        printf('{} is a directory'.format(filename),log=log,mode='d')
+        printf('{} is a directory'.format(filename),log=log,mode='d' if log else 's')
         return default
     if not os.path.exists(filename):
-        printf('{} not found'.format(filename),log=log,mode='d')
+        printf('{} not found'.format(filename),log=log,mode='d' if log else 's')
         return default
     try:
         if read_firstline:  # Readline
@@ -7277,7 +7297,7 @@ def cat(filename,**opts):
         if not byte:
            data=Str(data)
     except:
-        printf(sys.exc_info()[0],log=log,mode='d')
+        printf(sys.exc_info()[0],log=log,mode='d' if log else 's')
         return default
     return RemoveNewline(data,mode='edge' if no_edge else 'end' if no_end_newline else 'first' if no_first_newline else 'all' if no_all_newline else None,newline=newline,byte=byte)
 
