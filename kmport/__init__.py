@@ -29,6 +29,7 @@ import pprint
 import pickle
 import inspect
 import getpass
+import dateutil
 import warnings
 import datetime
 import platform
@@ -4484,6 +4485,10 @@ class TIME:
     def Int(self,name=None,timezone=None):
         # Now time to int, same as Now or Get
         #return self.Now(int,timezone=timezone if timezone else self.timezone)
+        if not name:
+            if self.src:
+                timedata=self.ReadStr(self.src)
+                return int(timedata.timestamp())
         return self.Get(name,mode=int,timezone=timezone if timezone else self.timezone,default='now')
 
     def Out(self,timeout_sec,default=(24*3600),name='init'):
@@ -4518,14 +4523,26 @@ class TIME:
         return datetime.datetime
 
     def Print(self,timedata=None,time_format='%Y-%m-%d %H:%M:%S'):
-        if not timedata: timedata=self.stopwatch['init']
+        if not timedata:
+            if self.src:
+                timedata=self.ReadStr(self.src)
+            else:
+                timedata=self.stopwatch['init']
         if isinstance(timedata,self.Datetime()):
-            return timedata.strftime('%Y-%m-%d %H:%M:%S')
+            return timedata.strftime(time_format)
         return ''
 
-    def ReadStr(self,timedata,time_format='%Y-%m-%d %H:%M:%S'):
+    #def ReadStr(self,timedata,time_format='%Y-%m-%d %H:%M:%S'):
+    def ReadStr(self,timedata=None,time_format=None):
+        if not timedata: timedata=self.src
         if isinstance(timedata,str):
-            return self.Datetime().strptime(timedata,time_format)
+            if time_format:
+                return self.Datetime().strptime(timedata,time_format)
+            else:
+                try:
+                    return dateutil.parser.parse(timedata)
+                except:
+                    pass
         return ''
 
     def TimeZone(self,setzone=None,want=None,name=None,timedata=None):
@@ -6790,7 +6807,7 @@ def Random(length=8,mode=None,strs=None,**opts):
 
 def IsAllSameStr(src,find):
     '''Check input string is All same string or not'''
-    if isinstance(src,str) and isinstance(find,str):
+    if isinstance(src,str) and isinstance(find,str) and src and find:
         if src.count(find) == len(src)/len(find):
             return True
     return False
@@ -6845,9 +6862,10 @@ def MkTemp(filename=None,suffix=None,split='-',opt='dry',base_dir=None,uniq=Fals
                 if IsAllSameStr(filename_a[ff],ss):
                     sss=ss
                     if ff < filename_n-1:
-                        aa=Random(length=len(filename_a[ff]),mode='num' if sss == 'N' else mode,strs=opts.get('custom'))
+                        ff_filename_len=len(filename_a[ff])
+                        aa=Random(length=ff_filename_len,mode='num' if sss == 'N' else mode,strs=opts.get('custom'))
                         if isinstance(aa,int):
-                            filename_a[ff]='%0{}d'.format(len(filename_a[ff]))%aa
+                            filename_a[ff]='%0{}d'.format(ff_filename_len)%aa
                         else:
                             filename_a[ff]='{}'.format(aa)
         filename_last_suffix=filename_a[-1].split('.')[0]
@@ -6855,11 +6873,13 @@ def MkTemp(filename=None,suffix=None,split='-',opt='dry',base_dir=None,uniq=Fals
         if sss is None: sss=['N','X']
         for ss in sss:
             if IsAllSameStr(filename_last_suffix,ss):
-                aa=Random(length=len(filename_last_suffix),mode='num' if ss == 'N' else mode,strs=opts.get('custom'))
-                if isinstance(aa,int):
-                    filename_a[-1]='%0{}d'.format(len(filename_last_suffix))%aa
-                else:
-                    filename_a[-1]='{}'.format(aa)
+                filename_last_suffix_len=len(filename_last_suffix)
+                if filename_last_suffix_len:
+                    aa=Random(length=filename_last_suffix_len,mode='num' if ss == 'N' else mode,strs=opts.get('custom'))
+                    if isinstance(aa,int):
+                        filename_a[-1]='%0{}d'.format(filename_last_suffix_len)%aa
+                    else:
+                        filename_a[-1]='{}'.format(aa)
                 if filename_last_ext:
                     filename_a[-1]=filename_a[-1]+'.{}'.format(filename_last_ext)
         return split.join(filename_a)
@@ -9366,6 +9386,45 @@ class Environment:
                 self.settings[k] = v
                 self.updated_at = datetime.datetime.now()
         
+def InfoFile(filename,default=False,**opts):
+    log=opts.get('log')
+    if not isinstance(filename,str) or not filename:
+        return default
+    if filename.startswith('https://') or filename.startswith('http://') or filename.startswith('ftp://'):
+        Import('import requests')
+        try:
+            r=requests.head(filename)
+            if r.status_code==200:
+                return {'type':r.headers.get("Content-Type"),
+                        'size':r.headers.get("Content-Length"),
+                        'mtime':r.headers.get("Last-Modified")}
+            elif r.status_code == 404:
+                printf('{} not found'.format(filename),log=log,mode='d' if log else 's')
+                return default
+            else:
+                printf(f'Unexpected response from {filename}: {r.status_code}',log=log,mode='d' if log else 's')
+                return default
+        except Exception as e:
+            printf(f'Unexpected error from {filename}: {e}',log=log,mode='d' if log else 's')
+            return default
+    else:
+        try:
+            if os.path.exists(filename):
+                state=os.stat(filename)
+                return {'size':state.st_size,
+                        'mode':oct(state.st_mode)[-4:],
+                        'atime':state.st_atime,
+                        'mtime':state.st_mtime,
+                        'ctime':state.st_ctime,
+                        'gid':state.st_gid,
+                        'uid':state.st_uid}
+            else:
+                printf('{} not found'.format(filename),log=log,mode='d' if log else 's')
+                return default
+        except Exception as e:
+            printf(f'Unexpected error from {filename}: {e}',log=log,mode='d' if log else 's')
+            return default
+
 #if __name__ == "__main__":
 #    # Integer
 #    print("Get(12345):",Get(12345))
