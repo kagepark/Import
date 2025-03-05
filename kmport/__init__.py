@@ -4371,21 +4371,32 @@ class WEB:
                     strings=strings.replace(mm,'''<font style="background-color:{1}">{0}</font>'''.format(mm,color))
         return strings
 
-    def url_path(self,host=None,file=None,method='http'):
+    def url_join(self,*inps,method='http'):
+        if not len(inps): return None
+        def remove_end_slash(i):
+            while True:
+                if i[-1] == '/':
+                    i=i[:-1]
+                else:
+                    return i
+        def remove_start_slash(i):
+            if isinstance(i,str) and i:
+                while True:
+                    if i[0] == '/':
+                        i=i[1:]
+                    else:
+                        return remove_end_slash(i)
+            return None
         if isinstance(method,str):
             if ':' in method:
                 method=method.split(':')[0]
-        if isinstance(file,str) and file:
-            while True:
-                if file[0] == '/':
-                    file=file[1:]
-                else:
-                    break
         if IsIn(method,['http','https','ftp']):
-            if file:
-                return f'{method}://{host}/{file}'
-            else:
-                return f'{method}://{host}'
+            new_url=f'{method}:/'
+            for i in inps:
+                i_n=remove_start_slash(i)
+                if i_n:
+                    new_url=f'{new_url}/{i_n}'
+            return new_url
 
 class TIME:
     def __init__(self,src=None,timezone=None):
