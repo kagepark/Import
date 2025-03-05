@@ -4393,7 +4393,8 @@ class WEB:
         if IsIn(method,['http','https','ftp']):
             new_url=f'{method}:/'
             for i in inps:
-                i_n=remove_start_slash(i)
+                if not isinstance(i,(int,float,str,bytes)): continue
+                i_n=remove_start_slash(Str(i))
                 if i_n:
                     new_url=f'{new_url}/{i_n}'
             return new_url
