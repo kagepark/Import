@@ -4371,6 +4371,21 @@ class WEB:
                     strings=strings.replace(mm,'''<font style="background-color:{1}">{0}</font>'''.format(mm,color))
         return strings
 
+    def url_path(self,host=None,file=None,method='http'):
+        if isinstance(method,str):
+            if ':' in method:
+                method=method.split(':')[0]
+        if isinstance(file,str) and file:
+            while True:
+                if file[0] == '/':
+                    file=file[1:]
+                else:
+                    break
+        if IsIn(method,['http','https','ftp']):
+            if file:
+                return f'{method}://{host}/{file}'
+            else:
+                return f'{method}://{host}'
 
 class TIME:
     def __init__(self,src=None,timezone=None):
