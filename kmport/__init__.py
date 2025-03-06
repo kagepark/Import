@@ -9391,8 +9391,16 @@ class Environment:
         if not key:
             if self.settings:
                 return True
-        elif key in self.settings:
-            return True
+        else:
+            if isinstance(key,str):
+                key=key.split(',')
+            if isinstance(key,(list,tuple)):
+                for i in key:
+                    if i in self.settings:
+                        return True
+            else:
+                if key in self.settings:
+                    return True
         return default
 
     def set(self, key, value):
