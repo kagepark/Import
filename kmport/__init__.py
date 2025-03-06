@@ -9386,9 +9386,12 @@ class Environment:
         else:
             return self.settings
 
-    def exist(self, key, default=False):
+    def exist(self, key=None, default=False):
         # Check being key or not
-        if key in self.settings:
+        if not key:
+            if self.settings:
+                return True
+        elif key in self.settings:
             return True
         return default
 
