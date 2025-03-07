@@ -4420,10 +4420,10 @@ class TIME:
                 else:
                     rt=self.stopwatch[name[0]]-self.stopwatch[name[1]]
         if rt is None:
-            if life_time:
-                rt=self.Now() - self.stopwatch['lifetime']
-            else:
+            if not life_time:
                 rt=self.Now() - self.stopwatch['init']
+            else:
+                rt=self.Now() - self.stopwatch['lifetime']
         # Convert integer value to human readable time
         # unit: None , integer: output : seconds (int)
         # Unit: None , not integer: output : Human readable passed time string (automatically calculate)
