@@ -142,7 +142,200 @@ class PRINTED:
             return True
         return False
 
+class Environment:
+    """
+    When loading this module then anywhere same data when initialize
+    first initialize making global dictionary. following any initialize get the existing dictionary
+    no input name then default to settings at name
+    env=Environment(name='special name',**{initial data})
+    env.name() : return the defined environment's 'special name'
+    env=Environment(name='special name') # Get the <special name>'s dictionary data
+    env=Environment(name='special name',**{update data}) # Get the <special name>'s dictionary data after update <update data>
+    env.get('a,b,c') : Get found any key's data for a or b or c
+    env.get('a,b,c',all_key=True): return list for all [<a's value>,<default> when not found,<c's value>]
+    env.get('/p/a/t/h/a,b,c',all_key=True,path='/'): return list for all [<a's value>,<default> when not found,<c's value>] in {'p':{'a':{'t':{'h':{<here's a,c>}}}}}
+                     input key's path symbol (ex: path='/')
+    env.exist(key) : find the key same as get()'s rule for key,all_key,path
+                     return Bool when rv=bool, others then return <full path of the found key>
+                                                           all_key or path then return list
+    env.set(key,path=True,**{update}) : update data same as get()'s rule for key,path, update at the key's path
+    env.set(key,value,path=True) : update value same as get()'s rule for key,path, value at the key's path
+    env.set(key,value) : put value at the key
+    env.set(**{data}) : put data 
+    env.set(key,value,**{data}) : put value at the key and update data
+    env.remove(key) : find the key same as get()'s rule for key,path
+    """
+
+    _instances = {}  # Dictionary to store instances with different group names
+
+    def __new__(cls, name='settings', **kwargs):
+        if not name or not isinstance(name,str): name='settings'
+        if name not in cls._instances:
+            instance = super().__new__(cls)
+            instance._name = name  # Store the group name
+            instance.settings = kwargs
+#            instance.updated_at = datetime.datetime.now()
+            cls._instances[name] = instance
+        else:
+            instance = cls._instances[name]
+            for k, v in kwargs.items():
+                instance.settings[k] = v
+#                instance.updated_at = datetime.datetime.now()
+        return instance
+
+    def reset(self,**kwargs):
+        self.settings={}
+        for k in kwargs:
+            self.settings[k]=kwargs[k]
+
+    def name(self):
+        return self._name
+
+    def _ChangePath_(self,data,key,path=False):
+        moved=[]
+        if isinstance(path,str) and len(path) == 1 and isinstance(key,str) and key:
+            key_p=key.split(path)
+            if len(key_p) > 1:
+                #move path
+                for pk in key_p[:-1]:
+                    if not pk: continue
+                    if pk in data:
+                        moved.append(pk)
+                        data=data[pk]
+                    else:
+                        return False,pk,moved
+                key=key_p[-1]
+        return data,key,moved
+
+    def pop(self, key, default=None,path=False):
+        data,key,cur=self._ChangePath_(self.settings,key,path)
+        if isinstance(data,dict) and key and key in data:
+            return data.pop(key)
+        return default
+
+    def get(self, key=None, default=None, all_key=False, split_symbol=',',path=False):
+        # key=None : return dict
+        # key      : return list when all_key=True, or return value
+        # Get key's value or full dict
+        # key is list then return list with each values
+        # all_key is True then return list same as key. others then found anyone then return the value
+        #data=self.settings
+        data,key,cur=self._ChangePath_(self.settings,key,path)
+        if not isinstance(data,dict):
+            return default
+        if key:
+            if isinstance(key,str) and split_symbol in key:
+                key=key.split(split_symbol)
+            if isinstance(key,(list,tuple)):
+                out=[]
+                for k in key:
+                    if all_key:
+                        out.append(data.get(k,default))
+                    else:
+                        a=data.get(k,{None})
+                        if a != {None}:
+                            return a
+                if all_key:
+                    return out
+                return default
+            else:
+                return data.get(key, default)
+        else:
+            return data
+
+    def exists(self, key=None, default=False, all_key=False,split_symbol=',',rv={None},path=False):
+        # return : rv is bool then return True/False
+        #          rv is {None} then return key/default
+        # Check being key or not
+        #if path: all_key=True
+        data,key,cur=self._ChangePath_(self.settings,key,path)
+        if isinstance(data,dict):
+            if not key:
+                if data: # any data then True when no key
+                    if IsIn(rv,[bool,'bool']):
+                        return True
+                    else:
+                        return data
+            else:
+                if isinstance(key,str) and split_symbol in key:
+                    key=key.split(',')
+                if isinstance(key,(list,tuple)):
+                    out=[]
+                    for i in key:
+                        if all_key:
+                            if i in data:
+                                if IsIn(rv,[bool,'bool']):
+                                    out.append(True)
+                                else:
+                                    out.append(os.path.join(*cur,i))
+                            else:
+                                if IsIn(rv,[bool,'bool']):
+                                    out.append(False)
+                                else:
+                                    out.append(default)
+                        else:
+                            if i in data:
+                                #first any key found then return
+                                if IsIn(rv,[bool,'bool']):
+                                    return True
+                                else:
+                                    return os.path.join(*cur,i)
+                    if all_key:
+                        #for all_key=True
+                        return out
+                    else:
+                        #not found case when all_key=False
+                        if IsIn(rv,[bool,'bool']): #Not found
+                            return False
+                        return default
+                else:
+                    if key in data:
+                        if IsIn(rv,[bool,'bool']):
+                            return True
+                        else:
+                            if all_key:
+                                return [os.path.join(*cur,key)]
+                            else:
+                                return os.path.join(*cur,key)
+        if all_key:
+            if IsIn(rv,[bool,'bool']):
+                return [False]
+            return [default]
+        else:
+            if IsIn(rv,[bool,'bool']):
+                return False
+            return default
+
+    def set(self, key=None, value={None}, path=False,**kwargs):
+        data,key,cur=self._ChangePath_(self.settings,key,path)
+        if not isinstance(data,dict):
+            return False
+        # Set value at the key
+        if key:
+            if value == {None}:
+                return False
+            data[key] = value
+        #self.updated_at = datetime.datetime.now()
+        for k in kwargs:
+            data[k] = kwargs[k]
+        return True
+
+    def update(self, key=None, value={None}, path=False,**kwargs):
+        # Same function
+        return self.set(key,value,path,**kwargs)
+
+    def remove(self, key, split_symbol=',',path=False):  # Removed default parameter as it's not used
+        #True: Removed, False: Not found any key for remove
+        # remove key if exisint the key
+        #all_key=True for get list from exist()
+        for k in self.exists(key,all_key=True,default=False,split_symbol=split_symbol,path=path):
+            if k is not False:
+                data,d,cur=self._ChangePath_(self.settings,k,path)
+                del data[d]
+
 printf_newline_info=PRINTED()
+env_errors=Environment(name='__Error__')
+env_breaking=Environment(name='__Break__')
 
 def Global_bak(loc=0,ignores=['__builtins__','__spec__','__loader__','__cached__','__doc__','__package__','__name__','__file__','__annotations__'],InFunc=False):
     env={'__name__':[],'__file__':[]}
@@ -1559,11 +1752,12 @@ def IsIn(find,dest,idx=False,default=False,sense=False,startswith=True,endswith=
             if Found(dest.get(idx),find,digitstring,word,white_space,sense): return True
     return default
 
-def BoolOperation(a,mode=bool):
+def BoolOperation(a,mode=bool,default=None):
     if type(a).__name__ == 'bool':
         if mode is bool: return a
         if mode in ['opposition','opposit']:
             return not a
+    return default
 
 def Bool(src,want=True,auto_bool=False,shell_code=True):
     if want in [True,False,'True','False',b'True',b'False']:
@@ -3724,7 +3918,7 @@ class HOST:
             return net_dev
         return default
 
-    def Alive(self,ip,keep=20,interval=3,timeout=1800,default=False,log=None,cancel_func=None):
+    def Alive(self,ip,keep=20,interval=3,timeout=1800,default=False,log=None,**opts):
         time=TIME()
         run_time=time.Int()
         if IpV4(ip):
@@ -3735,11 +3929,12 @@ class HOST:
                     if log:
                         log(']\n',direct=True,log_level=1)
                     return False,'Timeout monitor'
-                if IsBreak(cancel_func):
+                breaked,msg=IsBreak(opts.get('cancel_func'),**opts.get('cancel_args',{}))
+                if breaked:
                     if log:
                         log(']\n',direct=True,log_level=1)
-                    return True,'Stopped monitor by Custom'
-                if ping(ip,cancel_func=cancel_func):
+                    return True,f'Stopped monitor by Custom: {msg}'
+                if ping(ip,cancel_func=opts.get('cancel_func'),cancel_args=opts.get('cancel_args',{})):
                     if (time.Int() - run_time) > keep:
                         if log:
                             log(']\n',direct=True,log_level=1)
@@ -3760,7 +3955,7 @@ class HOST:
         if IpV4(ip):
             return ping(ip,keep_good=keep_good,timeout=timeout)
 
-def IpV4(ip=None,out='str',default=False,port=None,bmc=False,used=False,pool=None,support_hostname=False,ifname=False):
+def IpV4(ip,out='str',default=False,port=None,bmc=False,used=False,pool=None,support_hostname=False,ifname=False):
     '''
     check/convert IP
     ip : int, str, domainname, ethernet dev name, None
@@ -3930,6 +4125,10 @@ def IpV4(ip=None,out='str',default=False,port=None,bmc=False,used=False,pool=Non
     return default
 
 def ping(host,**opts):
+    #if using cancel_func case
+    # - please look at infinite loop code when cancel_func's sub-code has this ping with cancel_func. 
+    #   this case, please use ping with less 3 count or less 10 seconds timeout.
+    #     (does not using cancel_func() in less 3 counts or less 10 seconds timeout)
     ICMP_ECHO_REQUEST = 8 # Seems to be the same on Solaris. From /usr/include/linux/icmp.h;
     ICMP_CODE = socket.getprotobyname('icmp')
     ERROR_DESCR = {
@@ -4052,13 +4251,10 @@ def ping(host,**opts):
     local_printed=False
     i=0
     while True:
-       if IsBreak(cancel_func,**cancel_args):
-          printf('- ping({}) - Canceled/Stopped ping by cancel signal'.format(host),first_newline=True,log=log,dsp=dspi)
-          break
        rc=_ping_(host,timeout=1,size=64,log_format=log_format)
        if rc[0] == 0:
           good=True
-          if not count:
+          if count <= 1:
               bTime.Reset()
               if keep_good:
                   if gTime.Out(keep_good): break
@@ -4071,7 +4267,7 @@ def ping(host,**opts):
               local_printed=True
        else:
           good=False
-          if not count:
+          if count <= 1:
               gTime.Reset()
               if keep_bad:
                   if bTime.Out(keep_bad): break
@@ -4082,10 +4278,16 @@ def ping(host,**opts):
               local_printed=True
        if count:
            count-=1
-           if count < 1: break
+           if count <= 1: break
        if Time.Out(timeout): break
        time.sleep(interval)
        i+=1
+       #If breaking then stop
+       if count > 3 or timeout > 12:
+           breaked,msg=IsBreak(cancel_func,**cancel_args)
+           if breaked:
+              printf('- ping({}) - Canceled/Stopped ping by {}'.format(host,msg),first_newline=True,log=log,dsp=dspi)
+              break
     if end_newline:
         if local_printed: printf('',log=log, no_intro=True, dsp=dspi,caller_parent=1,ignore_empty=False)
     return good
@@ -4230,7 +4432,7 @@ class WEB:
         ping: True: Check dest IP with ping, False: not check dest IP (default)
         max_try: default 3, retry max number when failed
         mode: default get, (get,post,patch)
-        ip: dest IP
+        ip or host : dest IP
         port: default 80 or 443, arrcording to http or https, if you want special port then type
         bmc: default False, True then automaticall check BMC port
         timeout: request timeout (seconds), default None
@@ -4238,11 +4440,10 @@ class WEB:
         # remove SSL waring error message (test)
         self.requests.packages.urllib3.disable_warnings()
 
-        ip=opts.get('ip',None)
+        ip=opts.get('ip',opts.get('host',None))
         port=opts.get('port',None)
-        bmc=opts.get('bmc',False)
         mode=opts.get('mode',opts.get('method','get'))
-        max_try=opts.get('max_try',opts.get('retry',opts.get('loop',opts.get('try',3)))) # Retry max number
+        max_try=Int(opts.get('max_try',opts.get('retry',opts.get('loop',opts.get('try')))),1) # Retry max number
         auth=opts.get('auth',None)
         user=opts.get('user',None)
         passwd=opts.get('passwd',None)
@@ -4252,23 +4453,21 @@ class WEB:
         request_url=opts.get('request_url',None)
         dbg=opts.get('dbg',False)  # show debugging log
         log=opts.get('log') 
+        timeout=Int(opts.get('timeout'),0) # request timeout
         chk_ping=opts.get('ping',False) # check ping to IP
-        timeout=opts.get('timeout',None) # request timeout
-        command_timeout=opts.get('command_timeout',None)
-        ping_good=Int(opts.get('ping_good'),10)
-        if IsInt(command_timeout): chk_ping=True
+        ping_timeout=Int(opts.get('ping_timeout',opts.get('pingout',opts.get('ping_out'))),300 if chk_ping else 0) # ping timeout
         req_data={}
         chk_dest=None
-        if isinstance(timeout,int): req_data['timeout']=timeout
+        if timeout > 0: req_data['timeout']=timeout
         if opts.get('https'): req_data['verify']=False
         if Type(auth,'tuple',data=True):
             req_data['auth']=opts.get('auth')
         elif Type(user,'str',data=True) and Type(passwd,'str',data=True):
             req_data['auth']=(user,passwd)
-        if Type(data,'dict',data=True): req_data['data']=opts.get('data')
+        if Type(data,'dict',data=True): req_data['data']=data
         if Type(json_data,'dict',data=True): req_data['json']=json_data
             
-        if Type(files,'dict',data=True): req_data['files']=opts.get('files')
+        if Type(files,'dict',data=True): req_data['files']=files
         headers=opts.get('headers') # dictionary format
         if Type(headers,'str',data=True):
             if headers == 'json':
@@ -4278,7 +4477,7 @@ class WEB:
                     req_data['data']=data
                 elif json_data:
                     data=json.dumps(json_data)
-                    if 'json' in req_data: req_data.pop('json')
+                    #if 'json' in req_data: req_data.pop('json')
                     req_data['data']=data
         elif Type(headers,'dict',data=True):
             req_data['headers']=headers
@@ -4301,37 +4500,22 @@ class WEB:
                     req_data['verify']=False
         if IsNone(chk_dest):
             return False,'host_url or ip not found'
-        if chk_ping and chk_dest:
-            ping_rc=ping(chk_dest,timeout=3,support_hostname=True,log_format='i')
-            if not isinstance(ping_rc,bool) and ping_rc==0:
-                return 0,'Canceled'
-            elif not ping_rc:
-                if IsInt(command_timeout):
-                    Time=TIME()
-                    Time.Reset(name='good')
-                    while True:
-                        if Time.Out(command_timeout):
-                            return False,'Can not access to destination({}) over {} sec'.format(chk_dest,command_timeout)
-                        ping_rc=ping(chk_dest,count=1,support_hostname=True,log_format='i')
-                        if not isinstance(ping_rc,bool) and ping_rc==0:
-                            return 0,'Canceled'
-                        if ping_rc:
-                            if Time.Out(ping_good,name='good'):
-                                printf('\n',direct=True,log=log)
-                                break
-                            printf('.',direct=True,log=log)
-                        else:
-                            Time.Reset(name='good')
-                            printf('x',direct=True,log=log)
-                        time.sleep(2)
-                else:
-                    return False,'Can not access to destination({})'.format(chk_dest)
-        if bmc:
-            if IpV4(chk_dest,bmc=True,support_hostname=True) is False:
-                return False,'The IP({}) is not BMC IP'.format(chk_dest)
+        # check ping for the network
+        if ping_timeout:
+            Time=TIME()
+            while True:
+                ping_rc=ping(chk_dest,count=1,support_hostname=True,log_format='i')
+                if ping_rc:
+                    break
+                if Time.Out(ping_timeout):
+                    return False,f'Can not access at {chk_dest} over {ping_timeout} sec'
+                printf('.',direct=True,log=log)
+                time.sleep(3)
+                continue
         ss = self.requests.Session()
         err_msg=''
-        for j in range(0,max_try):
+        if max_try < 1 : max_try=1
+        for j in range(max_try):
             try:
                 if IsSame(mode,'post'):
                     r =ss.post(host_url,**req_data)
@@ -4340,17 +4524,13 @@ class WEB:
                 else:
                     r =ss.get(host_url,**req_data)
                 return True,r
-            except:
-                pass
+            except Exception as e:
+                err_msg=f'Server({chk_dest}) has an error for {mode}: {e}'
             #except requests.exceptions.RequestException as e:
-            err_msg='Server({}) has no response'.format(chk_dest)
-            if dbg:
-                printf('Server({}) has no response (wait {}/{} (10s))'.format(chk_dest,j,max_try),log=log,mode='s')
-            else:
-                printf('.',direct=True,log=log)
-                printf('Server({}) has no response (wait {}/{} (10s))'.format(chk_dest,j,max_try),log=log,mode='d')
+            printf('.',direct=True,log=log)
+            printf(f'[{j}/{max_try}]: {err_msg}',log=log,mode='d',no_intro=None)
             time.sleep(10)
-        return False,'TimeOut: {}'.format(err_msg) if err_msg else 'TimeOut'
+        return False,err_msg if err_msg else f'Has an issue over {max_try} (re)try'
 
     def str2url(self,string):
         if IsNone(string): return ''
@@ -4812,11 +4992,47 @@ def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin
         return p.returncode, out, err,start_time.Int('init'),start_time.Now(int),cmd,path,os_env
     return p.returncode, out, err,start_time.Int('init'),start_time.Now(int),cmd,path
 
-def IsCancel(func,**opts):
-    return IsTrue(func,requirements=['cancel','canceling','REVD','stop','break'],**opts)
+def IsError(key=None,value=None,remove=False):
+    if key and value:
+        return env_errors.set(key,value),'Save'
+    elif key:
+        if env_errors.exists(key):
+            if remove:
+                env_errors.remove(key)
+                return True,'Removed'
+            return True,env_errors.get(key)
+    else:
+        if env_errors.get():
+            return True,env_errors.get()
+    return False,'No error'
+        
+def IsBreak(cancel_func=None,value=None,**opts):
+    #First time check global variable
+    if IsIn(cancel_func,['cancel','canceled','canceling','REV','REVD','stop','break']):
+        if value:
+            env_breaking.set(cancel_func,value)
+            return True,'Save'
+        else:
+            for k in ['cancel','canceled','canceling','REV','REVD','stop','break']:
+                cancel_msg=env_breaking.get(k)
+                if cancel_msg:
+                    #printf('IsBreak by {}'.format(cancel_args.get(k)),mode='d')
+                    return True,cancel_msg
+        return False,'No condition'
+    #Make condition
+    cancel_args=env_breaking.get('cancel_args',{})
+    if not cancel_func:
+        cancel_func=env_breaking.get('cancel_func')
+    for k in opts:
+        if k in ['cancel_func','cancel_args'] : continue
+        cancel_args[k]=opts.get(k)
+    breaked=IsTrue(cancel_func,requirements=['cancel','canceled','canceling','REVD','stop','break'],**cancel_args)
+    if breaked:
+        return True,f'Condition: {cancel_func} with {cancel_args}'
+    return False,'No condition'
 
-def IsBreak(func,**opts):
-    return IsTrue(func,requirements=['cancel','canceling','REVD','stop','break'],**opts)
+def IsCancel(func=None,**opts):
+    return IsBreak(func,**opts)
 
 def FixApostrophe(string):
     if isinstance(string,str):
@@ -6071,8 +6287,7 @@ def SehllToPythonRC(rc):
         return rc
     return rc
 
-#def krc(rt=None,chk='_',rtd=None,default=False,mode=None,ext='shell'):
-def krc(rt=None,ext=None,chk='_',rtd=None,default=False,mode=None):
+def krc(rt,ext=None,chk={None},rtd=None,default=False,mode=None):
     global krc_define
     global krc_ext
     if not ext: ext=krc_ext
@@ -6114,7 +6329,7 @@ def krc(rt=None,ext=None,chk='_',rtd=None,default=False,mode=None):
     if isinstance(a,kRT): a=FormData(str(a)) # convert kRT()'s rc to rc data
     #nrtc=trans(Peel(rtc,err=False,default='unknown')) #If Get() got multi data then use first data
     nrtc=trans(a) #If Get() got multi data then use first data
-    if chk != '_':
+    if chk != {None}:
         if not isinstance(chk,list): chk=[chk]
         for cc in chk:
             if trans(cc) == nrtc:
@@ -8137,6 +8352,18 @@ class FILE_W:
             print('Can not read {}'.format(filename))
             return False
 
+    def IsFile(self,filename):
+        if isinstance(filename,str) and filename:
+            if os.path.isfile(filename):
+                return True
+        return False
+
+    def IsDir(self,filename):
+        if isinstance(filename,str) and filename:
+            if os.path.isdir(filename):
+                return True
+        return False
+
 class TRY:
     def __init__(self,auto=None,logfile=None,log_all=False,err_screen=False,err_exit=False,default=None,log=None):
         self.auto=auto #True: All auto, None: defaults auto, False: not use
@@ -9312,122 +9539,25 @@ class kProgress:
 #        return self
 
 
-class Environment:
-    """
-    Sample class)
-    class A:
-        def __init__(self,**opts):
-            self.env=Environment(**opts)
-        def run(self):
-            print(f"ENV: {self.env.__dict__}")
-
-    class B:
-        def __init__(self,**opts):
-            self.env=Environment(**opts)
-        def run(self):
-            print(f"ENV: {self.env.__dict__}")
-
-    example1)
-        Environment(a=1,b=2)
-        a=A()
-        b=B()
-        a.run()
-        b.run()
-
-    example2)
-        a=A(a=1,b=2)
-        b=B()
-        a.run()
-        b.run()
-
-    example3)
-        a=A(a=1,b=2)
-        b=B(b=4,c=5)
-        a.run()
-        b.run()
-
-    example4)
-        Environment(a=1,b=2)
-        a=A(m=3)
-        b=B(n=4)
-        a.run()
-        b.run()
-
-    example5)
-        import env  # This class module file
-        env.Environment(a=1,b=2)
-        a=A(m=3) # need update to env.Environment(**opts) for env module 
-        b=B(n=4) # need update to env.Environment(**opts) for env module 
-        a.run()
-        b.run()
-    """
-
-    _instances = {}  # Dictionary to store instances with different group names
-
-    def __new__(cls, name='settings', **kwargs):
-        if not name or not isinstance(name,str): name='settings'
-        if name not in cls._instances:
-            instance = super().__new__(cls)
-            instance._name = name  # Store the group name
-            instance.settings = kwargs
-            instance.updated_at = datetime.datetime.now()
-            cls._instances[name] = instance
-        else:
-            instance = cls._instances[name]
-            for k, v in kwargs.items():
-                instance.settings[k] = v
-                instance.updated_at = datetime.datetime.now()
-        return instance
-
-    def get(self, key=None, default=None):
-        # Get key's value or full dict
-        if key:
-            return self.settings.get(key, default)
-        else:
-            return self.settings
-
-    def exist(self, key=None, default=False):
-        # Check being key or not
-        if not key:
-            if self.settings:
-                return True
-        else:
-            if isinstance(key,str):
-                key=key.split(',')
-            if isinstance(key,(list,tuple)):
-                for i in key:
-                    if i in self.settings:
-                        return True
-            else:
-                if key in self.settings:
-                    return True
-        return default
-
-    def set(self, key, value):
-        # Set value at the key
-        self.settings[key] = value
-        self.updated_at = datetime.datetime.now()
-
-    def remove(self, key):  # Removed default parameter as it's not used
-        # remove key if exisint the key
-        if key in self.settings:
-            del self.settings[key]
-            self.updated_at = datetime.datetime.now()
-            return True
-        else:
-            return False
-
-    def update(self, **kwargs):
-        # Update dict
-        for k, v in kwargs.items():
-            if self.settings.get(k) != v:
-                self.settings[k] = v
-                self.updated_at = datetime.datetime.now()
-        
-def InfoFile(filename,default=False,**opts):
+def InfoFile(filename,**opts):
+    #return :
+    #  Found info : {dict}
+    #  -1    : File not found
+    #  -2    : Connection error
+    #  -3    : Missing requirement
+    #  -4    : Unexpected error
     log=opts.get('log')
+    no_intro=opts.get('no_intro')
+    direct=opts.get('direct')
+    log_mode=opts.get('mode')
+    if log:
+        if not log_mode:
+            log_mode='d'
+    else:
+        log_mode='s'
     if not isinstance(filename,str) or not filename:
-        return default
+        printf(f'filename({filename}) : Missing or not string format',log=log,mode=log_mode,no_intro=no_intro)
+        return -3
     if filename.startswith('https://') or filename.startswith('http://') or filename.startswith('ftp://'):
         Import('import requests')
         try:
@@ -9437,14 +9567,14 @@ def InfoFile(filename,default=False,**opts):
                         'size':r.headers.get("Content-Length"),
                         'mtime':r.headers.get("Last-Modified")}
             elif r.status_code == 404:
-                printf('{} not found'.format(filename),log=log,mode='d' if log else 's')
-                return default
+                printf(f'{filename} not found',log=log,mode=log_mode,no_intro=no_intro)
+                return -1
             else:
-                printf(f'Unexpected response from {filename}: {r.status_code}',log=log,mode='d' if log else 's')
-                return default
+                printf(f'Unexpected response from {filename}: {r.status_code}',log=log,mode=log_mode,no_intro=no_intro)
+                return -2
         except Exception as e:
-            printf(f'Unexpected error from {filename}: {e}',log=log,mode='d' if log else 's')
-            return default
+            printf(f'Unexpected error from {filename}: {e}',log=log,mode=log_mode,no_intro=no_intro,direct=direct)
+            return -4
     else:
         try:
             if os.path.exists(filename):
@@ -9457,11 +9587,11 @@ def InfoFile(filename,default=False,**opts):
                         'gid':state.st_gid,
                         'uid':state.st_uid}
             else:
-                printf('{} not found'.format(filename),log=log,mode='d' if log else 's')
-                return default
+                printf(f'{filename} not found',log=log,mode=log_mode,no_intro=no_intro,direct=direct)
+                return -1
         except Exception as e:
-            printf(f'Unexpected error from {filename}: {e}',log=log,mode='d' if log else 's')
-            return default
+            printf(f'Unexpected error from {filename}: {e}',log=log,mode=log_mode,no_intro=no_intro,direct=direct)
+            return -4
 
 #if __name__ == "__main__":
 #    # Integer
