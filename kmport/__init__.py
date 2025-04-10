@@ -1095,16 +1095,17 @@ def FixIndex(src,idx,default=False,err=False):
         True: if wrong index then return default value
     '''
     if isinstance(src,(list,tuple,str,dict)) and isinstance(idx,int):
-        if idx < 0:
+        if idx < -1:
             if len(src) > abs(idx):
                 idx=len(src)-abs(idx)
             else:
                 if err: return default
                 idx=0
-        else:
+        elif idx > 0:
             if len(src) <= idx:
                 if err: return default
-                idx=len(src)-1
+                #idx=len(src)-1
+                idx=-1
         return idx
     return default
 
@@ -1631,6 +1632,52 @@ def Found(data,find,digitstring=False,word=False,white_space=True,sense=True,loc
         return type(data) == type(find) and data == find
     return data == find
 
+def BoolOperation(a,mode=bool,default=None):
+    if type(a).__name__ == 'bool':
+        if mode is bool: return a
+        if mode in ['opposition','opposit']:
+            return not a
+    return default
+
+def Bool(src,want=True,auto_bool=False,shell_code=True):
+    if want in [True,False,'True','False',b'True',b'False']:
+        if type(want).__name__ in ['str','bytes']: want=eval(want) # convert string bool to bool
+        if auto_bool and isinstance(src, (list,tuple,dict)) and src: # convert list,tuple,dict to bool
+            if isinstance(src,(list,tuple)):
+                src=src[0]
+            elif isinstance(src,dict):
+                src=src.get('rc')
+        elif src in [True,False,'True','False',b'True',b'False']: # Convert string bool to bool
+            if type(src).__name__ in ['str','bytes']: src=eval(src)
+        if shell_code and isinstance(src,int) and not isinstance(src,bool): # Convert shell rc to bool
+            src=True if src == 0 else False
+        return src == want
+    elif want in [str,'str',int,'int',dict,'dict',list,'list',tuple,'tuple',None,'None']:
+        if type(want).__name__ in ['str','bytes']: want=eval(want) # convert string bool to bool
+        if want is None:
+            if src == '': src=None
+            return src == want
+        else:
+            return isinstance(src,want)
+    return False
+
+def PyDefine(aa):
+    if IsIn(aa,[None,"'None'",'"None"','None','null',"'null'",'"null"']):
+        return None
+    elif IsIn(aa,[True,"'True'",'"True"','True','ok']):
+        return True
+    elif IsIn(aa,[False,"'False'",'"False"','False','fail']):
+        return False
+    return aa
+
+def WhiteStrip(src,mode=True):
+    '''
+    remove multi space to single space, remove first and end space
+    others return original
+    '''
+    if mode is True and type(src).__name__ in ('str','bytes'): return src.strip()
+    return src
+
 def IsSame(src,dest,sense=False,order=False,_type_=False,digitstring=True,white_space=False,pythonlike=False,ignore_keys=[]):
     '''
     return True/False
@@ -1751,52 +1798,6 @@ def IsIn(find,dest,idx=False,default=False,sense=False,startswith=True,endswith=
         else:
             if Found(dest.get(idx),find,digitstring,word,white_space,sense): return True
     return default
-
-def BoolOperation(a,mode=bool,default=None):
-    if type(a).__name__ == 'bool':
-        if mode is bool: return a
-        if mode in ['opposition','opposit']:
-            return not a
-    return default
-
-def Bool(src,want=True,auto_bool=False,shell_code=True):
-    if want in [True,False,'True','False',b'True',b'False']:
-        if type(want).__name__ in ['str','bytes']: want=eval(want) # convert string bool to bool
-        if auto_bool and isinstance(src, (list,tuple,dict)) and src: # convert list,tuple,dict to bool
-            if isinstance(src,(list,tuple)):
-                src=src[0]
-            elif isinstance(src,dict):
-                src=src.get('rc')
-        elif src in [True,False,'True','False',b'True',b'False']: # Convert string bool to bool
-            if type(src).__name__ in ['str','bytes']: src=eval(src)
-        if shell_code and isinstance(src,int) and not isinstance(src,bool): # Convert shell rc to bool
-            src=True if src == 0 else False
-        return src == want
-    elif want in [str,'str',int,'int',dict,'dict',list,'list',tuple,'tuple',None,'None']:
-        if type(want).__name__ in ['str','bytes']: want=eval(want) # convert string bool to bool
-        if want is None:
-            if src == '': src=None
-            return src == want
-        else:
-            return isinstance(src,want)
-    return False
-
-def PyDefine(aa):
-    if IsIn(aa,[None,"'None'",'"None"','None','null',"'null'",'"null"']):
-        return None
-    elif IsIn(aa,[True,"'True'",'"True"','True','ok']):
-        return True
-    elif IsIn(aa,[False,"'False'",'"False"','False','fail']):
-        return False
-    return aa
-
-def WhiteStrip(src,mode=True):
-    '''
-    remove multi space to single space, remove first and end space
-    others return original
-    '''
-    if mode is True and type(src).__name__ in ('str','bytes'): return src.strip()
-    return src
 
 def IsNone(src,**opts):
     '''
@@ -1952,6 +1953,22 @@ def IsInt(src,mode='all'):
                 return _int_(src)
         else:
             return _int_(src)
+    return False
+
+def IsFloat(a):
+    try:
+        float(a)
+        return True
+    except:
+        return False
+
+def IsBool(a):
+    try:
+        if isinstance(a,str): a=eval(a)
+        if type(a).__name__ == 'bool':
+            return True
+    except:
+         pass
     return False
 
 def _obj_max_idx_(obj,idx,err=True):
@@ -5934,7 +5951,7 @@ class LIST(list):
         find=opts.get('find','index')
         all_data=opts.get('all',opts.get('all_data',opts.get('del_all')))
         default=opts.get('default',False)
-        if find in ['index','id']: # for keep original index
+        if find in ['index','id','idx']: # for keep original index
             tmp=[]
             for i in range(0,len(self)):
                 if i in inps: continue
@@ -5998,27 +6015,30 @@ class LIST(list):
         at=opts.get('at',-1)
         default=opts.get('default',False)
         err=opts.get('err',False)
+        inps=list(inps)
+        if not inps:
+            return 
         if isinstance(at,str):
-            if at in ['start','first']: root=list(inps)+self
-            elif at in ['end','last']: root=self+list(inps)
+            if at in ['start','first']: root=inps+self
+            elif at in ['end','last']: root=self+inps
         elif len(self) == 0:
-            root=list(inps)
+            root=inps
         elif isinstance(at,int):
             if len(self) >= abs(at):
                 if at == -1 or len(self) == at:
-                    root=self+list(inps)
+                    root=self+inps
                 else:
                     if at < -1: at=at+1
-                    root=self[:at]+list(inps)+self[at:]
+                    root=self[:at]+inps+self[at:]
             elif len(self) < abs(at):
                 if at > 0:
-                    root=self+list(inps)
+                    root=self+inps
                 else:
-                    root=list(inps)+self
+                    root=inps+self
         else:
             if err:
                 return default
-            root=self+list(inps)
+            root=self+inps
         super().__init__(i for i in root)
 
     def Update(self,*inps,**opts):
@@ -6067,23 +6087,39 @@ class LIST(list):
             return rt
         return default
 
-    def Move2first(self,find):
-        if Type(find,('LIST','list','tuple')):
-            self.Delete(*find,find='data')
-            super().__init__(i for i in list(find)+self)
-        else:
-            self.Delete(*(find,),find='data')
-            super().__init__(i for i in [find]+self)
+    def MoveData(self,find=None,to='first',from_idx=None,swap=False):
+        data=self
+        if find:
+            if Type(find,('LIST','list','tuple')):
+                find=list(find)
+            else:
+                find=[find]
+            for ff in find:
+                data=MoveData(data,ff,to=to)
+        elif isinstance(from_idx,int):
+            data=MoveData(data,to=to,from_idx=from_idx,swap=swap)
+        super().__init__(i for i in data)
         return self
 
+    def Move2first(self,find):
+        return self.MoveData(find,to='first')
+        #if Type(find,('LIST','list','tuple')):
+        #    self.Delete(*find,find='data')
+        #    super().__init__(i for i in list(find)+self)
+        #else:
+        #    self.Delete(*(find,),find='data')
+        #    super().__init__(i for i in [find]+self)
+        #return self
+
     def Move2end(self,find):
-        if isinstance(find,(list,tuple)):
-            self.Delete(*find,find='data')
-            super().__init__(i for i in self+list(find))
-        else:
-            self.Delete(*(find,),find='data')
-            super().__init__(i for i in self+[find])
-        return self
+        return self.MoveData(find,to='last')
+        #if Type(find,('LIST','list','tuple')):
+        #    self.Delete(*find,find='data')
+        #    super().__init__(i for i in self+list(find))
+        #else:
+        #    self.Delete(*(find,),find='data')
+        #    super().__init__(i for i in self+[find])
+        #return self
 
     def Sort(self,reverse=False,func=None,order=None,field=None,base='key',sym=None):
         try:
@@ -6669,21 +6705,21 @@ def printf(*msg,**opts):
 
     #When having Log function then give the data to log function
     log_p=False
-    if IsFunction(log): # Log function( debug mode log function too )
-        try:
-            if ('d' in dsp or 'f' in dsp) and logfile and 'n' not in dsp:
-                if 'caller_parent' in opts:
-                    if isinstance(opts['caller_parent'],int):
-                        opts['caller_parent']=opts['caller_parent']+1
-                    else:
-                        opts['caller_parent']=2
-                else:
-                    opts['caller_parent']=2
+    if ('d' in dsp or 'f' in dsp) and 'n' not in dsp:
+        if 'caller_parent' in opts:
+            if isinstance(opts['caller_parent'],int):
+                opts['caller_parent']=opts['caller_parent']+1
+            else:
+                opts['caller_parent']=2
+        else:
+            opts['caller_parent']=2
+    try:
+        if IsFunction(log): # Log function( debug mode log function too )
             FeedFunc(log,*msg,**opts)
             # If log function take over the log then no more print to others
             return
-        except:
-            pass
+    except:
+        pass
 
     # Make a Intro
     intro_len=0
@@ -6960,7 +6996,28 @@ def TypeData(src,want_type=None,default='org',spliter=None):
         return FormData(src,default='org')
     return Default(src,default)
 
-def MoveData(src,data=None,to=None,from_idx=None,force=False,default='org'):
+def FindIndex(src,key,default=False,backward=False,forward=False):
+    if isinstance(src,(list,tuple,str,dict)):
+        if isinstance(src,dict):
+            src=list(src)
+        if key in src:
+            i=src.index(key)
+            m=len(src)
+            if backward:
+                if i == 0:
+                    return 0
+                else:
+                    return i-1
+            elif forward:
+                if i == m-1:
+                    return -1
+                else:
+                    return i+1
+            else:
+                return i
+    return False 
+
+def MoveData(src,data=None,to=None,from_idx=None,force=False,swap=False,default='org'):
     '''
     support src type is list,str,(tuple)
     moving format : data(data) or from_idx(int)
@@ -6970,6 +7027,7 @@ def MoveData(src,data=None,to=None,from_idx=None,force=False,default='org'):
       force=True: even tuple to move
     if not support then return default
     default : org
+    swap=True: swap data bwtween from_idx and to index, not support data
     '''
     _tuple=False
     src_type=TypeName(src)
@@ -6977,22 +7035,69 @@ def MoveData(src,data=None,to=None,from_idx=None,force=False,default='org'):
         if not force: return Default(src,default)
         _tuple=True
         src_type='list'
-    if src_type in ['list','str'] and src:
+    #if src_type in ['list','str'] and src:
+    if src_type in ['list','str']:
         src=list(src)
-        if to == 'last': to=-1
-        elif to == 'first': to=0
-        if isinstance(from_idx,int) and isinstance(to,int):
-            if len(src) > abs(from_idx):
-                to=FixIndex(src,to)
-                if from_idx!=to:
-                    if to == -1:
-                        src.append(src[from_idx])
-                    elif to == 0:
-                        src=[src[from_idx]]+src
+        if to in ['last','end']: to=-1
+        elif to in ['first','start']: to=0
+        elif to == 'backward':
+            if isinstance(from_idx,int):
+                if len(src) > abs(from_idx):
+                    if from_idx<0:
+                        if len(src) > abs(from_idx) + 1:
+                            to=from_idx-1
+                        else:
+                            to=0
                     else:
-                        src=src[:to]+[src[from_idx]]+src[to:]
-                    src[to]=src[from_idx]
-                    del src[from_idx]
+                        if from_idx==0:
+                            to = 0
+                        else:
+                            to = from_idx-1
+            else:
+               to=FindIndex(src,data,backward=True)
+               if IsBool(to) and to is False:
+                   to=-1
+        elif to == 'forward':
+            if isinstance(from_idx,int):
+                if len(src) > abs(from_idx):
+                    if from_idx<0:
+                        if len(src) > abs(from_idx) - 1:
+                            to=from_idx+1
+                        else:
+                            to=-1
+                    else:
+                        if len(src)-1 <= from_idx:
+                            to = -1
+                        else:
+                            to = from_idx+1
+            else:
+                to=FindIndex(src,data,forward=True)
+                if IsBool(to) and to is False:
+                    to=-1
+        if isinstance(from_idx,int) and isinstance(to,int):
+            to=FixIndex(src,to)
+            from_idx=FixIndex(src,from_idx)
+            if len(src) > abs(from_idx):
+                if from_idx!=to:
+                    if swap:
+                        data_from=src[from_idx]
+                        data_to=src[to]
+                        src[to]=data_from
+                        src[from_idx]=data_to
+                    else:
+                        if to == -1:
+                            src.append(src[from_idx])
+                        elif to == 0:
+                            src=[src[from_idx]]+src
+                        else:
+                            if from_idx >= 0 and from_idx < to:
+                                src=src[:to+1]+[src[from_idx]]+src[to+1:]
+                            else:
+                                src=src[:to]+[src[from_idx]]+src[to:]
+                        if abs(from_idx) < abs(to):
+                            del src[from_idx]
+                        else:
+                            del src[from_idx+1]
         elif not IsNone(data) and isinstance(to,int):
             to=FixIndex(src,to)
             src=[i for i in src if i!=data]
@@ -8989,23 +9094,6 @@ def Str2Args(data,breaking='-'):
             rt.append(data_a[ii])
         ii+=1
     return rt
-
-def IsFloat(a):
-    try:
-        float(a)
-        return True
-    except:
-        return False
-
-def IsBool(a):
-    try:
-        if isinstance(a,str): a=eval(a)
-        if isinstance(a,bool) and not isinstance(a,int):
-            return True
-    except:
-         pass
-    return False
-
 
 def scanf(string,fmt,**opts):
     '''
