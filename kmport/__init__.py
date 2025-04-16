@@ -3372,40 +3372,40 @@ def FormData(*src,default=None,want_type=None,err=False):
     ....
     '''
     ec=False
-    a_s=''
-    if len(src) > 0:
-        for i in src:
+    a_s=Str(src[0],default='org')
+    if isinstance(a_s,str):
+        for i in src[1:]:
             a_t=Str(i,default='org')
             if isinstance(a_t,str):
-                if a_s:
-                    a_s=a_s+''' '''+a_t
-                else:
-                    a_s=a_t
+                a_s=a_s+''' '''+a_t
             else:
                 ec=True
                 break
+    else:
+        ec=True
     if ec:
         if err:
             return False
         if len(src) == 1:
             return src[0]
         return src
-    src=a_s
     form_src=None
-    if isinstance(src,str):
-        if Type(want_type,'str'): return src
+    if isinstance(a_s,str):
+        if Type(want_type,'str'): return a_s
+        # remove newline from \'abc\n\' to \'abc\'. because, '' can't support \n
+        a_s=''.join(a_s.split('\n'))
         try:
-            form_src=ast.literal_eval(src)
+            form_src=ast.literal_eval(a_s)
         except:
             try:
-                form_src=json.loads(src)
+                form_src=json.loads(a_s)
             except:
                 try:
-                    form_src=eval(src)
+                    form_src=eval(a_s)
                 except:
                     return Default(src,default)
     else:
-        form_src=src
+        form_src=a_s
     if IsNone(want_type):
         return form_src
     else:
