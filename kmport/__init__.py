@@ -334,6 +334,7 @@ class Environment:
                 del data[d]
 
 printf_newline_info=PRINTED()
+env_global=Environment(name='__Global__')
 env_errors=Environment(name='__Error__')
 env_breaking=Environment(name='__Break__')
 
@@ -1285,7 +1286,9 @@ def TypeName(obj):
     #elif obj_name in ['kDict','kList']+[name for name, obj in inspect.getmembers(sys.modules[__name__]) if inspect.isclass(obj)]: # Special case name
     #    print('>>> TypeName2:',obj_name, '<=', obj)
     #    return obj_name
-    elif obj_name in ['int','float','str','dict','tuple','list','bool','NoneType']:
+    elif obj_name in ['int','float','str','dict','tuple','list','bool','NoneType','Dot']:
+        if obj_name == 'Dot': #Special Dot()'s return type name to 'str' instead 'Dot'
+            return 'str'
     #elif obj_name in ['str']:
         #try:
         #    obj_tmp=eval(obj)
@@ -3957,11 +3960,13 @@ class HOST:
                             log(']\n',direct=True,log_level=1)
                         return True,'OK'
                     if log:
-                        log('-',direct=True,log_level=1)
+                        #log('-',direct=True,log_level=1)
+                        log(Dot('-'),direct=True,log_level=1)
                 else:
                     run_time=time.Int()
                     if log:
-                        log('.',direct=True,log_level=1)
+                        #log('.',direct=True,log_level=1)
+                        log(Dot(),direct=True,log_level=1)
                 time.Sleep(interval)
             if log:
                 log(']\n',direct=True,log_level=1)
@@ -4280,7 +4285,8 @@ def ping(host,**opts):
           if log_format == 'ping':
               printf('{} bytes from {}: icmp_seq={} ttl={} time={} ms'.format(rc[4],rc[1],i,rc[2],rc[5]),log=log,dsp=dspi)
           elif dspi in ['d','s']:
-              printf('.',direct=True,log=log,log_level=1,dsp=dspi,scr_dbg=False)
+              #printf('.',direct=True,log=log,log_level=1,dsp=dspi,scr_dbg=False)
+              printf(Dot(),direct=True,log=log,log_level=1,dsp=dspi,scr_dbg=False)
               local_printed=True
        else:
           good=False
@@ -4291,7 +4297,8 @@ def ping(host,**opts):
           if log_format == 'ping':
               printf('{} icmp_seq={} timeout ({} second)'.format(rc[1],i,rc[3]),log=log,dsp=dspi)
           elif dspi in ['d','s']:
-              printf('x',direct=True,log_level=1,log=log, dsp=dspi,scr_dbg=False)
+              #printf('x',direct=True,log_level=1,log=log, dsp=dspi,scr_dbg=False)
+              printf(Dot('x'),direct=True,log_level=1,log=log, dsp=dspi,scr_dbg=False)
               local_printed=True
        if count:
            count-=1
@@ -4526,7 +4533,8 @@ class WEB:
                     break
                 if Time.Out(ping_timeout):
                     return False,f'Can not access at {chk_dest} over {ping_timeout} sec'
-                printf('.',direct=True,log=log)
+                #printf('.',direct=True,log=log)
+                printf(Dot(),direct=True,log=log)
                 time.sleep(3)
                 continue
         ss = self.requests.Session()
@@ -4544,7 +4552,8 @@ class WEB:
             except Exception as e:
                 err_msg=f'Server({chk_dest}) has an error for {mode}: {e}'
             #except requests.exceptions.RequestException as e:
-            printf('.',direct=True,log=log)
+            #printf('.',direct=True,log=log)
+            printf(Dot(),direct=True,log=log)
             printf(f'[{j}/{max_try}]: {err_msg}',log=log,mode='d',no_intro=None)
             time.sleep(10)
         return False,err_msg if err_msg else f'Has an issue over {max_try} (re)try'
@@ -8687,7 +8696,8 @@ def Progress(symbol='.',**opts):
             if (isinstance(delay,int) and not  Time.Out(delay)) or not IsTrue(delay): #less delay time then skip progress log
                 time.sleep(0.3)
                 continue
-        printf(symbol,direct=True,log=log,log_level=1,mode=mode)
+        #printf(symbol,direct=True,log=log,log_level=1,mode=mode)
+        printf(Dot(symbol),direct=True,log=log,log_level=1,mode=mode)
         local_printed=True
         time.sleep(interval)
     if end_newline and local_printed:
@@ -9564,7 +9574,8 @@ class kProgress:
     def Ing(self,symbol='.',loop=False,interval=1):
         if loop:
             while True:
-                printf(symbol,direct=True,log=self.log,log_level=self.log_level)
+                #printf(symbol,direct=True,log=self.log,log_level=self.log_level)
+                printf(Dot(symbol),direct=True,log=self.log,log_level=self.log_level)
                 time.sleep(interval)
         else:
             printf(symbol,direct=True,log=self.log,log_level=self.log_level)
@@ -9680,6 +9691,29 @@ def InfoFile(filename,**opts):
         except Exception as e:
             printf(f'Unexpected error from {filename}: {e}',log=log,mode=log_mode,no_intro=no_intro,direct=direct)
             return -4
+
+class Dot(str):
+    dbg = False  # Class-level debug flag
+
+    def __new__(cls,symbol='.'):
+        obj = super().__new__(cls, symbol)
+        obj.symbol = symbol
+        return obj
+
+    def __str__(self):
+        if Dot.dbg or env_global.get('Dot_dbg'):
+            arg={'parent':4,'args':False,'history':False,'tree':False,'filename':True,'line_number':True}
+            call_name=FunctionName(**arg)
+            if env_global.get('__Dot_continue__') == call_name:
+                return f"{self.symbol}"
+            else:
+                env_global.set('__Dot_continue__',call_name)
+                #if env_global.get('__Dot_continue__'):
+                #    return f"\n{call_name} : {self.symbol}"
+                #else:
+                #    return f"{call_name} : {self.symbol}"
+                return f"{call_name} : {self.symbol}"
+        return f"{self.symbol}"
 
 #if __name__ == "__main__":
 #    # Integer
