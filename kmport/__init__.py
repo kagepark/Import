@@ -9702,17 +9702,16 @@ class Dot(str):
 
     def __str__(self):
         if Dot.dbg or env_global.get('Dot_dbg'):
-            arg={'parent':4,'args':False,'history':False,'tree':False,'filename':True,'line_number':True}
+            arg={'parent':env_global.get('Dot_parent','3-10'),'args':False,'history':True,'tree':True,'filename':True,'line_number':True}
             call_name=FunctionName(**arg)
-            if env_global.get('__Dot_continue__') == call_name:
-                return f"{self.symbol}"
-            else:
-                env_global.set('__Dot_continue__',call_name)
-                #if env_global.get('__Dot_continue__'):
-                #    return f"\n{call_name} : {self.symbol}"
-                #else:
-                #    return f"{call_name} : {self.symbol}"
-                return f"{call_name} : {self.symbol}"
+            if call_name:
+                if env_global.get('__Dot_continue__') != call_name:
+                    env_global.set('__Dot_continue__',call_name)
+                    if isinstance(call_name,str):
+                        call_name=[call_name]
+                    call_name=call_name+[' ']
+                    intro_msg=WrapString(Join(call_name,'\n'),fspace=0, nspace=0,mode='space',ignore_empty_endline=False) + ': '
+                    return f"{intro_msg} {self.symbol}"
         return f"{self.symbol}"
 
 #if __name__ == "__main__":
