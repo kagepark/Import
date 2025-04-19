@@ -1678,7 +1678,12 @@ def WhiteStrip(src,mode=True):
     remove multi space to single space, remove first and end space
     others return original
     '''
-    if mode is True and type(src).__name__ in ('str','bytes'): return src.strip()
+    src_type=type(src).__name__
+    if mode is True and src_type in ('str','bytes'): 
+        if src_type == 'bytes':
+            return re.sub(br'\s+', b' ', src).strip()
+        else:
+            return re.sub(r'\s+', ' ', src).strip()
     return src
 
 def IsSame(src,dest,sense=False,order=False,_type_=False,digitstring=True,white_space=False,pythonlike=False,ignore_keys=[]):
@@ -7323,44 +7328,127 @@ def osversion(mode='upper'):
         out['name']=_p_system.lower() if mode == 'l' else _p_system.upper()
     return out
 
-def Strip(src,mode='all',sym='whitespace'):
-    if isinstance(src,str):
-        if mode in ['start','left','begin']:
-            if sym=='whitespace':
-                return src.lstrip()
-            else:
-                return src.lstrip(sym)
-        elif mode in ['end','right','last']:
-            if sym=='whitespace':
-                return src.rstrip()
-            else:
-                return src.rstrip(sym)
-        elif mode in ['both','edge','outside']:
-            if sym=='whitespace':
-                return src.strip()
-            else:
-                return src.strip(sym)
-        elif mode in ['inside']:
-            for s in range(0,len(src)):
-                if sym=='whitespace':
-                    if src[s] != ' ': break
+def FindIndexStr(src,f,match=True,backward=False,find_all=False):
+    # matched string's start index number
+    # find_all=True: find all maching in the src
+    # match=False : find not matched area
+    # match=True  : find matched area
+    # found location data: src[index:index+len(f)]
+    f_len=len(f)
+    def _forward_(src,f,match,i,find_all):
+        all_out=[]
+        m=len(src)
+        while True:
+            if i >= m: break
+            if match:
+                if src[i:i+f_len] == f:
+                    if find_all:
+                        all_out.append(i)
+                    else:
+                        return i
+                    i=i+f_len
                 else:
-                    if src[s] != sym: break
-            for e in range(len(src)-1,0,-1):
-                if sym=='whitespace':
-                    if src[e] != ' ': break
-                else:
-                    if src[e] != sym: break
-            if sym=='whitespace':
-                return src[:s]+' '.join(src[s:e+1].split())+src[e+1:]
+                    i+=1
             else:
-                return src[:s]+sym.join(src[s:e+1].split(sym))+src[e+1:]
+                if src[i:i+f_len] != f:
+                    if find_all:
+                        all_out.append(i)
+                    else:
+                        return i
+                    i+=1
+                else:
+                    i=i+f_len
+        return all_out
+    def _backward_(src,f,match,i,find_all):
+        all_out=[]
+        while True:
+            if i < 0: break
+            if match:
+                if src[i-f_len:i] == f:
+                    if find_all:
+                        if i - f_len >= 0:
+                            all_out.append(i-f_len)
+                    else:
+                        return i-f_len
+                    i=i-f_len
+                else:
+                    i-=1
+            else:
+                if src[i-f_len:i] != f:
+                    if find_all:
+                        if i - f_len >= 0:
+                            all_out.append(i-1)
+                    else:
+                        return i-f_len
+                    i-=1
+                else:
+                    i=i-f_len
+        return all_out
+    if backward:
+        return _backward_(src,f,match,len(src),find_all)
+    else:
+        return _forward_(src,f,match,0,find_all)
+
+def Strip(src,mode='all',sym='whitespace',default='org',space=' '):
+    # default: strip function
+    # it can strip using multi characters : sym='abc'
+    # it can use like as replace
+    #   - similar as src.replace(sym,space)
+    def block_strip(src,strip_symbol,space):
+        all_found=FindIndexStr(src,strip_symbol,match=True,find_all=True)
+        out=[]
+        x=0
+        y=0
+        fm=len(strip_symbol)
+        m=len(src)
+        am=len(all_found)
+        while True:
+            if x >= m: break
+            if y >= am:
+                out.append(src[all_found[-1]+fm:])
+                break
+            if all_found[y] <= x < all_found[y]+fm:
+                x=x+fm
+                y+=1
+            else:
+                out.append(src[x:all_found[y]])
+                x=all_found[y]
+        return space.join(out)
+
+
+    if not isinstance(src,(str,bytes)):
+        if default == 'org':
+            return src
+        return default
+    sub_exp=r'\s+'
+    if sym == 'whitespace':
+        strip_symbol=' '
+    else:
+        strip_symbol=sym
+    if isinstance(src,bytes):
+        sub_exp=br'\s+'
+        space=b'{}'.format(space)
+        if sym == 'whitespace':
+            strip_symbol=b' '
         else:
-            if sym=='whitespace':
-                return ' '.join(src.split())
-            else:
-                return sym.join(src.split(sym))
-    return src
+            strip_symbol=b'{}'.format(sym)
+
+    if mode in ['start','left','begin']:
+        s=FindIndexStr(src,strip_symbol,match=False)
+        return src[s:]
+    elif mode in ['end','right','last']:
+        e=FindIndexStr(src,strip_symbol,match=False,backward=True)
+        return src[:e]
+    elif mode in ['both','edge','outside']:
+        s=FindIndexStr(src,strip_symbol,match=False)
+        e=FindIndexStr(src,strip_symbol,match=False,backward=True)
+        return src[s:e]
+    elif mode in ['inside']:
+        s=FindIndexStr(src,strip_symbol,match=False)
+        e=FindIndexStr(src,strip_symbol,match=False,backward=True)
+        return src[:s] + block_strip(src[s:e],strip_symbol,space) + src[e:]
+    else:
+        return block_strip(src,strip_symbol,space)
 
 def Pop(src,key,default=None):
     if isinstance(src,dict):
