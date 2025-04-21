@@ -3385,7 +3385,7 @@ def FormData(*src,default=None,want_type=None,err=False):
         for i in src[1:]:
             a_t=Str(i,default='org')
             if isinstance(a_t,str):
-                a_s=a_s+''' '''+a_t
+                a_s=a_s+""" """+a_t
             else:
                 ec=True
                 break
@@ -3401,7 +3401,7 @@ def FormData(*src,default=None,want_type=None,err=False):
     if isinstance(a_s,str):
         if Type(want_type,'str'): return a_s
         # remove newline from \'abc\n\' to \'abc\'. because, '' can't support \n
-        a_s=''.join(a_s.split('\n'))
+        a_s=a_s.encode('unicode_escape').decode()
         try:
             form_src=ast.literal_eval(a_s)
         except:
