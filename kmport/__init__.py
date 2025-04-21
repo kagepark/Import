@@ -3370,6 +3370,12 @@ def Split(src,symbol=None,default=[],sym_spliter='|',listonly=True):
         return [default]
     return default
 
+def Str2Raw(src):
+    #Define String to Raw
+    # abc=r"<string>"
+    #Convert String to Raw
+    return src.encode('unicode_escape').decode()
+
 def FormData(*src,default=None,want_type=None,err=False):
     '''
     convert string data to format
@@ -3401,7 +3407,8 @@ def FormData(*src,default=None,want_type=None,err=False):
     if isinstance(a_s,str):
         if Type(want_type,'str'): return a_s
         # remove newline from \'abc\n\' to \'abc\'. because, '' can't support \n
-        a_s=a_s.encode('unicode_escape').decode()
+        #a_s=a_s.encode('unicode_escape').decode()
+        a_s=Str2Raw(a_s)
         try:
             form_src=ast.literal_eval(a_s)
         except:
@@ -5065,7 +5072,7 @@ def IsBreak(cancel_func=None,value=None,**opts):
 def IsCancel(func=None,**opts):
     return IsBreak(func,**opts)
 
-def FixApostrophe(string):
+def FixApostropheInString(string):
     if isinstance(string,str):
         if "'" in string:
             return '''"{}"'''.format(string)
