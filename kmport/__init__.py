@@ -12,6 +12,7 @@ import re
 import bz2
 import sys
 import ast
+import html
 import copy
 import json
 import gzip
@@ -155,7 +156,7 @@ class Environment:
     env.get('a,b,c',all_key=True): return list for all [<a's value>,<default> when not found,<c's value>]
     env.get('/p/a/t/h/a,b,c',all_key=True,path='/'): return list for all [<a's value>,<default> when not found,<c's value>] in {'p':{'a':{'t':{'h':{<here's a,c>}}}}}
                      input key's path symbol (ex: path='/')
-    env.exist(key) : find the key same as get()'s rule for key,all_key,path
+    env.exists(key) : find the key same as get()'s rule for key,all_key,path
                      return Bool when rv=bool, others then return <full path of the found key>
                                                            all_key or path then return list
     env.set(key,path=True,**{update}) : update data same as get()'s rule for key,path, update at the key's path
@@ -878,13 +879,38 @@ def Str(src,**opts):
         return src
     return '''{}'''.format(src)
 
-def Strings(*src,merge_symbol=' ',excludes=None,split_symbol=' ',mode=None):
+def Strings(*src,merge_symbol=' ',excludes=None,split_symbol=' ',mode=None,extra_support=(int,float,bool)):
     '''
-    merge multiple strings to single string
+    convert python definition to string for int,float,bool
+    but others are ignore (None,...)
+    merge multiple line strings to single line string
+    extra_support for convert want type to string
+    if mode is shell then make multiple line code to ssingle line code
+    if mode is url then convert string to URL format string
+    if mode is html then convert string to html format (\n -> <br>)
+    if mode is html2str then convert html format to normal string
     merge_symbol=' ' : default ' '. merge with that symbol between strings
     split_symbol=' ' : default ' '. split each strings with the symbol for check excludes
     excludes   : excluding strings(str with comma, list, tuple), which is not support space
     '''
+    def tuple_to_line(*src,excludes=None,split_symbol=' ',merge_symbol=' ',extra_support=(int,float,bool)):
+        if isinstance(excludes,(str,list,tuple)):
+            if isinstance(excludes,str):
+                excludes=excludes.split(',')
+        out=[]
+        for i in src:
+            i_o=[]
+            if Type(i,extra_support):
+                if not IsIn(i,excludes):
+                    i=(f'{i}')
+                    i_o.append(i)
+            elif Type(i,('str','bytes')):
+                for ii in Split(i,split_symbol):
+                    if IsIn(ii,excludes): continue
+                    i_o.append(ii)
+            if i_o: out.append(Join(i_o,symbol=split_symbol))
+        return Join(out,symbol=merge_symbol)
+
     def string_to_shell_line(src):
         new_shell_line=''
         src_a=src.split('\n')
@@ -902,28 +928,50 @@ def Strings(*src,merge_symbol=' ',excludes=None,split_symbol=' ',mode=None):
                         new_shell_line=new_shell_line+' '+src_a[i].lstrip()+';'
         return new_shell_line
 
-    out=[]
     if mode == 'shell':
         if isinstance(src,str):
+            if IsNone(src): return ''
             return string_to_shell_line(src)
-        elif isinstance(src,tuple) and len(src) == 1 and isinstance(src[0],str):
-            return string_to_shell_line(src[0])
+        elif isinstance(src,tuple):
+            if len(src) == 1 and isinstance(src[0],str):
+                if IsNone(src[0]): return ''
+                return string_to_shell_line(src[0])
+            else:
+                string=tuple_to_line(*src,excludes=excludes,split_symbol=split_symbol,merge_symbol=merge_symbol,extra_support=extra_support)
+                if IsNone(string): return ''
+                return string_to_shell_line(string)
     else:
-        if isinstance(excludes,(str,list,tuple)):
-            if isinstance(excludes,str):
-                excludes=excludes.split(',')
-        if isinstance(excludes,(list,tuple)) and excludes:
-            for i in src:
-                i_o=[]
-                if Type(i,('str','bytes')):
-                    for ii in Split(i,split_symbol):
-                        if IsIn(ii,excludes): continue
-                        i_o.append(ii)
-                if i_o: out.append(Join(i_o,symbol=split_symbol))
-            return Join(out,symbol=merge_symbol)
+        string=tuple_to_line(*src,excludes=excludes,split_symbol=split_symbol,merge_symbol=merge_symbol,extra_support=extra_support)
+        if IsNone(string): return ''
+        if mode == 'html2str':
+            if isinstance(string,str):
+                return html.unescape(string)
+            return string
+        elif mode == 'html':
+            if isinstance(string,str):
+                return string.replace('\n','<br>')
+            return string
+        elif mode == 'url':
+            if isinstance(string,str):
+                return string.replace('+','%2B').replace('?','%3F').replace('/','%2F').replace(':','%3A').replace('=','%3D').replace(' ','+')
+            return string
         else:
-            return Join(src,symbol=merge_symbol)
-        
+            return string
+            #out=[]
+            #if isinstance(excludes,(str,list,tuple)):
+            #    if isinstance(excludes,str):
+            #        excludes=excludes.split(',')
+            #if isinstance(excludes,(list,tuple)) and excludes:
+            #    for i in src:
+            #        i_o=[]
+            #        if Type(i,('str','bytes')):
+            #            for ii in Split(i,split_symbol):
+            #                if IsIn(ii,excludes): continue
+            #                i_o.append(ii)
+            #        if i_o: out.append(Join(i_o,symbol=split_symbol))
+            #    return Join(out,symbol=merge_symbol)
+            #else:
+            #    return Join(src,symbol=merge_symbol)
             
 def Default(a,b=None):
     '''
@@ -1003,7 +1051,7 @@ def Int(i,default='org',sym=None,err=False):
         return tuple(rt) if tuple_out else rt
     return Default(i,default)
 
-def Join(*inps,symbol='_-_',byte=None,ignore_type=(dict,bool,None),ignore_data=(),append_front='',append_end='',default=None,err=False):
+def Join(*inps,symbol={None},byte=None,ignore_type=(dict,bool,None),ignore_data=(),append_front='',append_end='',default=None,err=False):
     '''
     Similar as 'symbol'.join([list]) function
     '''
@@ -1024,7 +1072,7 @@ def Join(*inps,symbol='_-_',byte=None,ignore_type=(dict,bool,None),ignore_data=(
     # if missing symbol option then just take end of inputs
     elif len(inps) >=2:
         mx=len(inps)
-        if symbol=='_-_':
+        if symbol=={None}:
             symbol=inps[-1]
             mx=mx-1
         for i in inps[:mx]:
@@ -9788,11 +9836,17 @@ def InfoFile(filename,**opts):
             return -4
 
 class Dot(str):
+    #Dot(symbol), default symbol='.'
+    #if Dot(None) or Dot('') then no symbol
+    #if Dot_dbg=True in Environment(name='__Global__') or Dot.dbg=True then it will show debugging information
     dbg = False  # Class-level debug flag
 
     def __new__(cls,symbol='.'):
         obj = super().__new__(cls, symbol)
-        obj.symbol = symbol
+        if not symbol:
+            obj.symbol=''
+        else:
+            obj.symbol = symbol
         return obj
 
     def __str__(self):
@@ -9807,7 +9861,94 @@ class Dot(str):
                     call_name=call_name+[' ']
                     intro_msg=WrapString(Join(call_name,'\n'),fspace=0, nspace=0,mode='space',ignore_empty_endline=False) + ': '
                     return f"{intro_msg} {self.symbol}"
+        #if self.symbol == 'n':
+        if not self.symbol:
+            return ''
         return f"{self.symbol}"
+
+def CodePrint(code,line_number=False,output=False):
+    out=[]
+    if line_number:
+        i=1
+        for l in code.split('\n'):
+            if output:
+                out.append(f'{i:>5} {l}')
+            else:
+                print(f'{i:>5} {l}')
+            i+=1
+        if output:
+            return '\n'.join(out)
+    else:
+        if output:
+            return code
+        else:
+            print(code)
+
+def Exec(code,env=None,args=(),kwargs={},merge_venv=False,error_code=False,inline=False,**venv):
+    #Execute string code like as inline code
+    #anywhere can return to return
+    #similar as exec(code) or exec(code,environment(dict))
+    #the difference is, Exec() can return value 
+    #if inline = True then same as exec()
+    if isinstance(env,dict) and not venv:
+        venv=env
+    if not isinstance(env,dict) and not venv or merge_venv:
+        frame = inspect.currentframe().f_back
+        if not venv:
+            venv=frame.f_globals.copy()
+        if merge_venv:
+            pvenv=frame.f_globals.copy()
+            for k in pvenv:
+                if k not in pvenv:
+                    venv[k]=pvenv.get(k)
+    try:
+        exec(code,venv)
+        if inline:
+            return
+        outname=list(venv)[-1]
+        output=venv[outname]
+        if type(output).__name__ == 'function':
+            try:
+                if args and not kwargs:
+                    if isinstance(args,tuple):
+                        return output(*args)
+                    else:
+                        return output(args)
+                elif not args and kwargs:
+                    return output(**kwargs)
+                elif args and kwargs:
+                    if isinstance(args,tuple):
+                        return output(*args,**kwargs)
+                    else:
+                        return output(args,**kwargs)
+                else:
+                    return output()
+            except Exception as e:
+                if error_code:
+                    er=traceback.format_exc().split('Traceback (most recent call last):')[-1].split('  File "<string>",')[-1]
+                    return {'error':f'{CodePrint(code,line_number=True,output=True)}\n at{er}'}
+                else:
+                    return {'error':e}
+        else:
+            return output
+    except Exception as e:
+        if inline:
+            if error_code:
+                er=traceback.format_exc().split('Traceback (most recent call last):')[-1].split('  File "<string>",')[-1]
+                return {'error':f'{CodePrint(code,line_number=True,output=True)}\n at{er}'}
+            else:
+                return {'error':e}
+        try:
+            code='def code_run():\n    '+code.replace('\n','\n    ')
+            exec(code,venv)
+            return venv['code_run']()
+        except Exception as e:
+            if error_code:
+                er=traceback.format_exc().split('Traceback (most recent call last):')[-1].split('  File "<string>",')[-1]
+                return {'error':f'{CodePrint(code,line_number=True,output=True)}\n at{er}'}
+            else:
+                return {'error':e}
+
 
 #if __name__ == "__main__":
 #    # Integer
