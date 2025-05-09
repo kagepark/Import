@@ -9252,7 +9252,11 @@ def scanf(string,fmt,**opts):
     '''
     a=scanf('<any string>',<format of finding value>,<options>)
     <format of finding value> : {<parameter name>} or {<parameter name>:<format>}
-      - format : IP, MAC, INT, Float, BOOL, STR(default)
+      - format : IP, MAC, INT, Float, BOOL,None , STR(default), EOL (or LINE), <number>
+      INT: found value matched to int then save it to Integer type
+      BOOL: found value matched to bool then save it to BOOL type
+      EOL: found start condition then put the data to EOL (End of Line(\n))
+      <number>: found start condition then put the value to the numbers (2 then two words, 3 then 3 words)
     scanf("ipmitool -H 192.168.1.3 -U ADMIN -P 'ADMIN 123' chassis power status","ipmitool -H {ip:ip} -U {user} -P {passwd} chassis")
     => {'ip': '192.168.1.3', 'user': 'ADMIN', 'passwd': 'ADMIN 123'}
     '''
@@ -9284,14 +9288,18 @@ def scanf(string,fmt,**opts):
         out={}
         foundstarts=0
         nextfoundstarts=0
-            
-        for s in Str2Args(line_string):
+        line_string_a=Str2Args(line_string) 
+        i=0
+        while i < len(line_string_a):
+            s=line_string_a[i]
+#        for s in Str2Args(line_string):
             if foundstarts >= len(fmt_d): break
             if fmt_d[foundstarts].get('type') == 'string':
                 if s == fmt_d[foundstarts].get('name'):
                     foundstarts+=1
                 else:
                     foundstarts=nextfoundstarts
+                i+=1
                 continue
             elif fmt_d[foundstarts].get('type') == 'parameter':
                 if fmt_d[foundstarts].get('form','_N.A_') != '_N.A_':
@@ -9320,10 +9328,27 @@ def scanf(string,fmt,**opts):
                             nextfoundstarts=foundstarts
                             out[fmt_d[foundstarts].get('name')]=eval(s)
                             foundstarts+=1
+                    elif IsIn(fmt_d[foundstarts].get('form'),[None,'None']):
+                        if IsIn(s,['None','null']):
+                            nextfoundstarts=foundstarts
+                            out[fmt_d[foundstarts].get('name')]=None
+                            foundstarts+=1
+                    elif IsIn(fmt_d[foundstarts].get('form'),['eol','line']):
+                        nextfoundstarts=foundstarts
+                        out[fmt_d[foundstarts].get('name')]=' '.join(line_string_a[i:])
+                        foundstarts+=1
+                        i=len(line_string_a)
+                    elif IsInt(fmt_d[foundstarts].get('form')):
+                        x=Int(fmt_d[foundstarts].get('form'))
+                        nextfoundstarts=foundstarts
+                        out[fmt_d[foundstarts].get('name')]=' '.join(line_string_a[i:i+x])
+                        foundstarts+=1
+                        i+=x
                 else:
                     nextfoundstarts=foundstarts
                     out[fmt_d[foundstarts].get('name')]=s
                     foundstarts+=1
+            i+=1
         return out
     if new_line:
         for ll in string.split(new_line):
@@ -9949,6 +9974,10 @@ def Exec(code,env=None,args=(),kwargs={},merge_venv=False,error_code=False,inlin
             else:
                 return {'error':e}
 
+def IsAlpha(src):
+    if isinstance(src,(str,bytes)):
+        return src.isalpha()
+    return False
 
 #if __name__ == "__main__":
 #    # Integer
