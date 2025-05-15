@@ -1690,7 +1690,50 @@ def BoolOperation(a,mode=bool,default=None):
             return not a
     return default
 
-def Bool(src,want=True,auto_bool=False,shell_code=True):
+def Bool(src,want={None},default=False,auto_bool=False,shell_code=False):
+    #Convert SRC to BOOL
+    def __convert_src__(src,default,auto_bool,shell_code):
+        src_type=type(src).__name__
+        if src_type == 'bool':
+            return src
+        if auto_bool:
+            if src_type in ['str','bytes']:
+                src=PyDefine(src)
+                if type(src).__name__ in ['str','bytes']:
+                    try:
+                        src=eval(src)
+                    except:
+                        return default
+                src_type=type(src).__name__
+            if src_type == 'int':
+                if shell_code:
+                    return True if src == 0 else False
+                else:
+                    return True if src > 0 else False
+            return src
+        return default
+
+    if want == {None}: #Not check want value then convert src to bool
+        return __convert_src__(src,default,auto_bool,shell_code)
+    #Both are same type then same value : True, different value: False
+    if type(src).__name__ == type(want).__name__: #same type
+        return src == want
+    #If want is type then src same as want type then True, different type then False
+    elif IsIn(want,[str,'str',int,'int',dict,'dict',list,'list',tuple,'tuple']):
+        return Type(src,want)
+    # if None or nothing then compare between None
+    elif IsIn(want,['',None,'None']):
+        if IsIn(src,['',None,'None']): return True
+        return False
+    else:
+        # Want is value then convert src and want with same condition and same value then return True, different value then False
+        a=__convert_src__(src,{None},auto_bool,shell_code)
+        b=__convert_src__(want,{None},auto_bool,shell_code)
+        if a == {None} and b == {None}: #Both are unknown then return default
+            return default
+        return a == b
+            
+def Bool_bak(src,want=True,auto_bool=False,shell_code=True):
     if want in [True,False,'True','False',b'True',b'False']:
         if type(want).__name__ in ['str','bytes']: want=eval(want) # convert string bool to bool
         if auto_bool and isinstance(src, (list,tuple,dict)) and src: # convert list,tuple,dict to bool
@@ -1702,7 +1745,9 @@ def Bool(src,want=True,auto_bool=False,shell_code=True):
             if type(src).__name__ in ['str','bytes']: src=eval(src)
         if shell_code and isinstance(src,int) and not isinstance(src,bool): # Convert shell rc to bool
             src=True if src == 0 else False
-        return src == want
+        if type(src) == type(want):
+            return src == want
+        return False
     elif want in [str,'str',int,'int',dict,'dict',list,'list',tuple,'tuple',None,'None']:
         if type(want).__name__ in ['str','bytes']: want=eval(want) # convert string bool to bool
         if want is None:
@@ -2367,7 +2412,9 @@ def CompVersion(*inp,**opts):
     sort list
     <list>.sort(key=CompVersion)  or sorted(<list>,key=CompVersion)
     '''
-    version_symbol=opts.get('version_symbol',opts.get('symbol','.'))
+    version_symbol=opts.get('version_symbol',opts.get('symbol','.')) #For 1.2.0
+    version_seperator=opts.get('version_seperator',opts.get('seperator','-|_')) #For -p3_20241212 from 1.2.0-p3_20241212
+    symbol_spliter=opts.get('symbol_spliter',opts.get('spliter','|')) # Version Seperator symbol split (above -|_ to - or _)
     compare_symbol=opts.get('compare_symbol',opts.get('compare'))
     if compare_symbol == 'is': compare_symbol='=='
     elif compare_symbol == 'is not': compare_symbol='!='
@@ -2378,6 +2425,17 @@ def CompVersion(*inp,**opts):
         for i in range(len(a)-1,0,-1):
             if i > 1 and a[i] == 0 and a[i-1]==0:
                 a.pop(i)
+        #string format(rc,alpha,beta) to clear format (r.x.x),(a.x.x),(b.x.x)
+        for i in range(0,len(a)):
+            if isinstance(a[i],str):
+                tmp=a[i].lower().split('.')
+                if tmp[0].startswith('r'):
+                    tmp[0]=tmp[0].replace('rc','r').replace('r','r.')
+                elif tmp[0].startswith('a'):
+                    tmp[0]=tmp[0].replace('alpha','a').replace('a','a.')
+                elif tmp[0].startswith('b'):
+                    tmp[0]=tmp[0].replace('beta','b').replace('b','b.')
+                a[i]=tmp[0]+'.'.join(tmp[1:])
         return a
     def Comp(src,dest):
         len_src=len(src)
@@ -2400,9 +2458,14 @@ def CompVersion(*inp,**opts):
                 return -1
         return 0
     def MkVerList(src,version_symbol):
+        org=src
+        version_symbol='.|-|_'
         if isinstance(src,dict): src=src.get('version',src.get('__version__'))
+        #Make version to list
         if Type(src,('str','bytes')):
-            src=Str(src).split(version_symbol)
+            #src=Str(src).split(version_symbol)
+            src=Split(Str(src),version_seperator,sym_spliter=symbol_spliter)
+            src=Split(src[0],version_symbol)+src[1:]
         elif Type(src,('int','float')):
             src=[src]
         elif isinstance(src, tuple):
@@ -4555,15 +4618,19 @@ class WEB:
         headers=opts.get('headers') # dictionary format
         if Type(headers,'str',data=True):
             if headers == 'json':
-                headers={ "Content-Type": "application/json"}
-                if data:
-                    data=json.dumps(data)
-                    req_data['data']=data
-                elif json_data:
-                    data=json.dumps(json_data)
-                    #if 'json' in req_data: req_data.pop('json')
-                    req_data['data']=data
-        elif Type(headers,'dict',data=True):
+                #Header is Json. So convert dictionary data to json format
+                headers={"Content-Type":"application/json"}
+                if req_data.get('data'):
+                    req_data['data']=json.dumps(req_data['data'])
+                elif req_data.get('json'):
+                    req_data['data']=json.dumps(req_data.pop('json'))
+                #if data:
+                #    data=json.dumps(data)
+                #    req_data['data']=data
+                #elif json_data:
+                #    data=json.dumps(json_data)
+                #    req_data['data']=data
+        if Type(headers,'dict',data=True):
             req_data['headers']=headers
         if not IsNone(ip):
             ip=IpV4(ip,out=str,support_hostname=True)
@@ -9205,6 +9272,21 @@ def piller(data,mode='cli',pill_list={'python':["'''",'"""','"',"'"],'cli':['"',
                     return data[len(ii):-len(ii)]
     return data
 
+
+def Args2Str(args,default='org'):
+    '''Convert Standard SHELL/CLI/SYS Args data(list) to string format'''
+    if isinstance(args,(tuple,list)):
+        args=list(args)
+        for i in range(0,len(args)):
+            if not isinstance(args[i],str): return False
+            if "'" in args[i]:
+                args[i]='''"{}"'''.format(args[i])
+            elif '"' in args[i]:
+                args[i]="""'{}'""".format(args[i])
+            elif ' ' in args[i]:
+                args[i]='''"{}"'''.format(args[i])
+        return ' '.join(args)
+    return args
 
 def Str2Args(data,breaking='-'):
     '''Convert String to Standard SHELL/CLI/SYS Args data(list)'''
