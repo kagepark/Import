@@ -786,6 +786,7 @@ def Str(src,**opts):
     mode=opts.get('mode','auto')
     remove=opts.get('remove',None)
     color_code=opts.get('color_code')
+    unicode_escape=opts.get('unicode_escape',False)
 
     color_db=opts.get('color_db',{'color':
                                    {'blue': 34, 'grey': 30, 'yellow': 33, 'green': 32, 'cyan': 36, 'magenta': 35, 'white': 37, 'red': 31},
@@ -877,7 +878,9 @@ def Str(src,**opts):
     if mode not in ['force','fix','fixed'] and isinstance(src,(list,tuple,dict)):
         if tuple_data: return tuple(src)
         return src
-    return '''{}'''.format(src)
+    if unicode_escape:
+        return f"{src}".encode('unicode_escape').decode()
+    return f"{src}"
 
 def Strings(*src,merge_symbol=' ',excludes=None,split_symbol=' ',mode=None,extra_support=(int,float,bool)):
     '''
@@ -3487,7 +3490,7 @@ def Str2Raw(src):
     #Convert String to Raw
     return src.encode('unicode_escape').decode()
 
-def FormData(*src,default=None,want_type=None,err=False):
+def FormData(*src,default=None,want_type=None,err=False,unicode_escape=None):
     '''
     convert string data to format
     '1' => 1
@@ -3517,9 +3520,8 @@ def FormData(*src,default=None,want_type=None,err=False):
     form_src=None
     if isinstance(a_s,str):
         if Type(want_type,'str'): return a_s
-        # remove newline from \'abc\n\' to \'abc\'. because, '' can't support \n
-        #a_s=a_s.encode('unicode_escape').decode()
-        a_s=Str2Raw(a_s)
+        if unicode_escape:
+            a_s=a_s.encode('unicode_escape').decode()
         try:
             form_src=ast.literal_eval(a_s)
         except:
@@ -3529,6 +3531,13 @@ def FormData(*src,default=None,want_type=None,err=False):
                 try:
                     form_src=eval(a_s)
                 except:
+                    # remove newline from \'abc\n\' to \'abc\'. because, '' can't support \n
+                    if unicode_escape is not False:
+                        a_s=a_s.encode('unicode_escape').decode()
+                        try:
+                            form_src=ast.literal_eval(a_s)
+                        except:
+                            pass
                     return Default(src,default)
     else:
         form_src=a_s
