@@ -6468,16 +6468,21 @@ def SehllToPythonRC(rc):
         return rc
     return rc
 
-def krc(rt,ext=None,chk={None},rtd=None,default=False,mode=None):
+def krc(rt,chk={None},rtd=None,default=False,mode=None,ext=None):
     global krc_define
     global krc_ext
-    if not ext: ext=krc_ext
+    if not ext: 
+        if mode == 'shell':
+            ext='shell'
+        elif mode == 'python':
+            ext='python'
+        else:
+            ext=krc_ext
     nrtd=Copy(krc_define,deep=True) if rtd is None else Copy(rtd,deep=True)
-    if ext == 'shell': # python
+    if ext == 'shell': # Shell
         if not IsIn(0,nrtd['GOOD']): nrtd['GOOD'].append(0)
         if not IsIn(1,nrtd['ERRO']): nrtd['ERRO']=nrtd['ERRO']+[1,126,128,130,255]
         if not IsIn(127,nrtd['NFND']): nrtd['NFND'].append(127)
-    #elif ext == 'python': # python
     else: # python
         if not IsIn(1,nrtd['GOOD']): nrtd['GOOD'].append(1)# Python's True level
         if not IsIn(0,nrtd['FAIL']): nrtd['FAIL'].append(0)# Python's False level
