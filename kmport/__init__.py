@@ -8029,7 +8029,8 @@ def Human_Unit(num,unit='S',want_unit=None,int_out=False):
             else:
                 return convert_sec_to_format(num,want_format=want_unit)
         #TIME
-        elif (mode == 'time' and want_unit in ['Y','D','H','M','S',None]) or (num_unit in ['Y','D','H','M','S'] and want_unit in ['Y','D','H','M','S']):
+        elif (mode == 'time' and want_unit in ['Y','D','H','M','S',None]) or \
+                (num_unit in ['Y','D','H','M','S'] and want_unit in ['Y','D','H','M','S']):
             oo=convert_int_time_to_yhms(num,unit=num_unit,want=want_unit)
             if int_out:
                 if want_unit:# and want_unit in oo:
@@ -8044,7 +8045,8 @@ def Human_Unit(num,unit='S',want_unit=None,int_out=False):
                         else: o='{}{}'.format(oo[i],i)
                 return o
         #Byte
-        elif num_unit in ["B","K","M","G","T","P"] and want_unit in ["B","K","M","G","T","P",None]:
+        elif (num_unit in ["B","K","M","G","T","P"] and IsIn(want_unit,['KB','MB','GB','TB','PB'])) or \
+                (mode == 'byte' and num_unit in ["B","K","M","G","T","P"]):
             return human_byte(num, unit=num_unit, wunit=want_unit, int_out=int_out)
     return 'Unknown Unit({} -> {})'.format(unit,want_unit)
 
@@ -10005,29 +10007,52 @@ def CodePrint(code,line_number=False,output=False):
         else:
             print(code)
 
-def Exec(code,env=None,args=(),kwargs={},merge_venv=False,error_code=False,inline=False,**venv):
+def Exec(code,env=None,args=(),kwargs={},merge_global=False,error_code=False,inline=False,**venv):
     #Execute string code like as inline code
     #anywhere can return to return
     #similar as exec(code) or exec(code,environment(dict))
     #the difference is, Exec() can return value 
     #if inline = True then same as exec()
-    if isinstance(env,dict) and not venv:
-        venv=env
-    if not isinstance(env,dict) and not venv or merge_venv:
-        frame = inspect.currentframe().f_back
-        if not venv:
-            venv=frame.f_globals.copy()
-        if merge_venv:
+    if isinstance(env,dict):
+        if merge_global: #Global is low priority
+            frame = inspect.currentframe().f_back
             pvenv=frame.f_globals.copy()
             for k in pvenv:
-                if k not in pvenv:
-                    venv[k]=pvenv.get(k)
+                if k.startswith('__') and k.endswith('__'): continue
+                if k not in env:
+                    env[k]=pvenv.get(k)
+                env[k]=pvenv.get(k) 
+    else:
+        #if merge_global: #Global is low priority
+        env={}
+        frame = inspect.currentframe().f_back
+        pvenv=frame.f_globals.copy()
+        for k in pvenv:
+            if k.startswith('__') and k.endswith('__'): continue
+            env[k]=pvenv.get(k)
+    if venv:
+        if not env: env={}
+        for k in venv: #highist priority
+            env[k]=venv[k]
     try:
-        exec(code,venv)
+        in_func=False
+        for l in code.split('\n'):
+            if l.startswith('return '):
+                in_func=True
+                break
+        if in_func:
+            new_code='''def run_inside_script():\n'''
+            new_code=new_code+'\n'.join('    '+line for line in code.split('\n'))
+            code=new_code+"\noutput=run_inside_script()"
+        if isinstance(env,dict):
+            exec(code,env)
+        else:
+            exec(code)
+
         if inline:
             return
-        outname=list(venv)[-1]
-        output=venv[outname]
+        outname=list(env)[-1]
+        output=env[outname]
         if type(output).__name__ == 'function':
             try:
                 if args and not kwargs:
@@ -10061,8 +10086,8 @@ def Exec(code,env=None,args=(),kwargs={},merge_venv=False,error_code=False,inlin
                 return {'error':e}
         try:
             code='def code_run():\n    '+code.replace('\n','\n    ')
-            exec(code,venv)
-            return venv['code_run']()
+            exec(code,env)
+            return env['code_run']()
         except Exception as e:
             if error_code:
                 er=traceback.format_exc().split('Traceback (most recent call last):')[-1].split('  File "<string>",')[-1]
