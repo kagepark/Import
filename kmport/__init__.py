@@ -5122,9 +5122,13 @@ def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin
           if PyVer(3):
              try:
                 out, err = p.communicate(timeout=timeout)
+             except KeyboardInterrupt:
+                p.terminate()
+                err='Process interrupted by user'
+                p.returncode=253
              except subprocess.TimeoutExpired:
                 p.kill()
-                p.returncode=999
+                p.returncode=254
                 err='Error: Kill process after Timeout {0}'.format(timeout)
           else:
               otimeout='{}'.format(timeout)
@@ -5133,7 +5137,7 @@ def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin
                   timeout = timeout - 0.1
               if p.poll() is None and timeout < 0:
                   p.kill()
-                  p.returncode=999
+                  p.returncode=254
                   err='Error: Kill process after Timeout {0}'.format(otimeout)
               if len(out) == 0 and len(err) == 0:
                   out, err = p.communicate()
