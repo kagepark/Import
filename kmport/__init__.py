@@ -5173,29 +5173,47 @@ def IsError(key=None,value=None,remove=False):
     return False,'No error'
         
 def IsBreak(cancel_func=None,value=None,**opts):
-    #First time check global variable
-    if IsIn(cancel_func,['cancel','canceled','canceling','REV','REVD','stop','break']):
-        if value:
-            env_breaking.set(cancel_func,value)
-            return True,'Save'
+    canceled=False
+    if IsFunction(cancel_func): # Log function( debug mode log function too )
+        cancel_args=opts.get('cancel_args',env_breaking.get('cancel_args',{}))
+        if cancel_args:
+            if isinstance(cancel_args,dict):
+                canceled=FeedFunc(cancel_func,**cancel_args)
+            elif isinstance(cancel_args,(list,tuple)):
+                canceled=FeedFunc(cancel_func,*cancel_args)
+            else:
+                canceled=FeedFunc(cancel_func,cancel_args)
         else:
-            for k in ['cancel','canceled','canceling','REV','REVD','stop','break']:
-                cancel_msg=env_breaking.get(k)
-                if cancel_msg:
-                    #printf('IsBreak by {}'.format(cancel_args.get(k)),mode='d')
-                    return True,cancel_msg
-        return False,'No condition'
-    #Make condition
-    cancel_args=env_breaking.get('cancel_args',{})
-    if not cancel_func:
-        cancel_func=env_breaking.get('cancel_func')
-    for k in opts:
-        if k in ['cancel_func','cancel_args'] : continue
-        cancel_args[k]=opts.get(k)
-    breaked=IsTrue(cancel_func,requirements=['cancel','canceled','canceling','REVD','stop','break'],**cancel_args)
-    if breaked:
-        return True,f'Condition: {cancel_func} with {cancel_args}'
+            canceled=FeedFunc(cancel_func)
+        if canceled:
+            env_breaking.set('REVD',value)
+            return True,'Canceled'
+    elif isinstance(cancel_func,bool):
+        if cancel_func is True:
+            canceled=True
+            env_breaking.set('REVD',value)
+            return True,'Canceled'
+    elif IsIn(cancel_func,['REVD','break','cancel','canceled','canceling','REV','stop']):
+        #Set Cancel to True
+        if value is True:
+            env_breaking.set('REVD',value)
+            return True,'Set Canceled'
+    for k in ['REVD','break','cancel','canceled','canceling','REV','stop']:
+        cancel_msg=env_breaking.get(k)
+        if cancel_msg:
+            return True,cancel_msg
     return False,'No condition'
+    ##Make condition
+    #cancel_args=env_breaking.get('cancel_args',{})
+    #if not cancel_func:
+    #    cancel_func=env_breaking.get('cancel_func')
+    #for k in opts:
+    #    if k in ['cancel_func','cancel_args'] : continue
+    #    cancel_args[k]=opts.get(k)
+    #breaked=IsTrue(cancel_func,requirements=['cancel','canceled','canceling','REVD','stop','break'],**cancel_args)
+    #if breaked:
+    #    return True,f'Condition: {cancel_func} with {cancel_args}'
+    #return False,'No condition'
 
 def IsCancel(func=None,**opts):
     return IsBreak(func,**opts)
