@@ -36,7 +36,7 @@ import datetime
 import platform
 import traceback
 import subprocess
-from threading import Thread
+from threading import Thread, Lock
 from importlib import import_module
 # If importing "from kmport import *" then
 # adding "global  printf_log_base",
@@ -10121,6 +10121,68 @@ def IsAlpha(src):
     if isinstance(src,(str,bytes)):
         return src.isalpha()
     return False
+
+def PDIF(host,func,*args,out=dict,**opts):
+    #Parallel distribute Function based on IP
+    #out=dict : return dictionary with key is host and data is function's output
+    #out=list : return list, the data is function's output and order is host's list
+    #ex)
+    # def func(ip,user,passwd,timeout=10,good=0):
+    #     ip base code
+    # PDIF([IPs],func,<func's args>,out=dict,<func's opts>)
+    # PDIF(['1.2.3.4','1.2.3.5','1.2.3.6'],func,'<IP>','ADMIN','ADMIN',out=dict,timeout=20,good=10)
+    #   PDIF, automatically give IP to func. it will replace <IP> to real IP. So, give <IP> string at right position
+    def SingleFunc(host,func,args=None,opts=None):
+        if isinstance(args,tuple) and args and isinstance(opts,dict) and opts:
+            args=list(args)
+            for i in range(0,len(args)):
+                if args[i] == '<IP>':
+                    args[i]=host
+            for i in opts:
+                if opts[i] == '<IP>':
+                    opts[i]=host
+            return func(*args,**opts)
+        elif isinstance(args,tuple) and args:
+            args=list(args)
+            for i in range(0,len(args)):
+                if args[i] == '<IP>':
+                    args[i]=host
+            return func(*args)
+        elif isinstance(opts,dict) and opts:
+            for i in opts:
+                if opts[i] == '<IP>':
+                    opts[i]=host
+            return func(**opts)
+        else:
+            return func()
+
+    if isinstance(host,list):
+        results = {}
+        #lock = threading.Lock()
+        lock = Lock()
+        threads = []
+        def ThreadSingleFunc(host,func,args=None,opts=None):
+            rt=SingleFunc(host,func,args=args,opts=opts)
+            with lock:
+                results[host] = rt
+
+        for ip in host:
+            t = Thread(target=ThreadSingleFunc, args=(ip,func,args,opts,))
+            threads.append(t)
+            t.start()
+
+        for t in threads:
+            t.join()
+
+        if out == list:
+            result=[None for i in host]
+            for ip in results:
+                result[host.index(ip)]=results[ip]
+            return result
+        else:
+            return results
+    else:
+        return SingleFunc(host,func,args=args,opts=opts)
 
 #if __name__ == "__main__":
 #    # Integer
