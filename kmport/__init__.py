@@ -10155,7 +10155,11 @@ def PDIF(host,func,*args,out=dict,**opts):
             return func(**opts)
         else:
             return func()
-
+    if isinstance(host,str):
+        if ' ' in host:
+            host=host.split()
+        elif ',' in host):
+            host=host.split(',')
     if isinstance(host,list):
         results = {}
         #lock = threading.Lock()
@@ -10165,7 +10169,8 @@ def PDIF(host,func,*args,out=dict,**opts):
             rt=SingleFunc(host,func,args=args,opts=opts)
             with lock:
                 results[host] = rt
-
+        #filter out duplicated host list
+        host=list(set(host))
         for ip in host:
             t = Thread(target=ThreadSingleFunc, args=(ip,func,args,opts,))
             threads.append(t)
