@@ -10158,7 +10158,7 @@ def PDIF(host,func,*args,out=dict,**opts):
     if isinstance(host,str):
         if ' ' in host:
             host=host.split()
-        elif ',' in host):
+        elif ',' in host:
             host=host.split(',')
     if isinstance(host,list):
         results = {}
