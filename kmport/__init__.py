@@ -30,7 +30,6 @@ import pprint
 import pickle
 import inspect
 import getpass
-import dateutil
 import warnings
 import datetime
 import platform
@@ -4909,6 +4908,7 @@ class TIME:
                 return self.Datetime().strptime(timedata,time_format)
             else:
                 try:
+                    Import('import dateutil',install_name='python-dateutil')
                     return dateutil.parser.parse(timedata)
                 except:
                     pass
@@ -5142,7 +5142,10 @@ def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin
               if len(out) == 0 and len(err) == 0:
                   out, err = p.communicate()
        else:
-          out, err = p.communicate()
+          try:
+              out, err = p.communicate()
+          except Exception as e:
+              err='Error: Kill process after Timeout {0}'.format(timeout)
        if progress:
           stop_threads=True
           ppth.join()
