@@ -10135,26 +10135,59 @@ def PDIF(host,func,*args,out=dict,**opts):
     # PDIF([IPs],func,<func's args>,out=dict,<func's opts>)
     # PDIF(['1.2.3.4','1.2.3.5','1.2.3.6'],func,'<IP>','ADMIN','ADMIN',out=dict,timeout=20,good=10)
     #   PDIF, automatically give IP to func. it will replace <IP> to real IP. So, give <IP> string at right position
+    #ex2)
+    # def func(mac,ip,**opts):
+    #     mac and ip base code
+    # PDIF([(mac,ip),(mac2,ip2),...],func,out=dict,'<IDX:0>','<IDX:1>',**opts)
+    #     <IDX:0> get (,)'s index 0 data
+    #     <IDX:1> get (,)'s index 1 data
+    #     So, put each tuple data to func's (mac,ip,**opts)
+    # ex3) if func(ip,mac,**opts) then
+    # PDIF([(mac,ip),(mac2,ip2),...],func,out=dict,'<IDX:1>','<IDX:0>',**opts)
     def SingleFunc(host,func,args=None,opts=None):
         if isinstance(args,tuple) and args and isinstance(opts,dict) and opts:
             args=list(args)
             for i in range(0,len(args)):
-                if args[i] == '<IP>':
+                if args[i] in ['<IP>','<HOST>']:
                     args[i]=host
+                elif isinstance(args[i],str) and args[i].startswith('<IDX:'):
+                    idx=Int(args[i].split(':')[1][:-1])
+                    if type(idx).__name__ == 'int' and len(host) > idx:
+                        args[i]=host[idx]
+                    else:
+                        return 'ERROR: Index (format: <IDX:#>)'
             for i in opts:
-                if opts[i] == '<IP>':
+                if opts[i] in ['<IP>','<HOST>']:
                     opts[i]=host
+                elif isinstance(opts[i],str) and opts[i].startswith('<IDX:'):
+                    idx=Int(opts[i].split(':')[1][:-1])
+                    if type(idx).__name__ == 'int' and len(host) > idx:
+                        opts[i]=host[idx]
+                    else:
+                        return 'ERROR: Index (format: <IDX:#>)'
             return func(*args,**opts)
         elif isinstance(args,tuple) and args:
             args=list(args)
             for i in range(0,len(args)):
-                if args[i] == '<IP>':
+                if args[i] in ['<IP>','<HOST>']:
                     args[i]=host
+                elif isinstance(args[i],str) and args[i].startswith('<IDX:'):
+                    idx=Int(args[i].split(':')[1][:-1])
+                    if type(idx).__name__ == 'int' and len(host) > idx:
+                        args[i]=host[idx]
+                    else:
+                        return 'ERROR: Index (format: <IDX:#>)'
             return func(*args)
         elif isinstance(opts,dict) and opts:
             for i in opts:
-                if opts[i] == '<IP>':
+                if opts[i] in ['<IP>','<HOST>']:
                     opts[i]=host
+                elif isinstance(opts[i],str) and opts[i].startswith('<IDX:'):
+                    idx=Int(opts[i].split(':')[1][:-1])
+                    if type(idx).__name__ == 'int' and len(host) > idx:
+                        opts[i]=host[idx]
+                    else:
+                        return 'ERROR: Index (format: <IDX:#>)'
             return func(**opts)
         else:
             return func()
