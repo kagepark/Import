@@ -9373,6 +9373,9 @@ def Str2Args(data,breaking='-'):
 
 def scanf(string,fmt,**opts):
     '''
+    it can convert multi line to single line(default).
+    if you want use each line then use new_line='\n'
+    find_all sub option from the new_line
     a=scanf('<any string>',<format of finding value>,<options>)
     <format of finding value> : {<parameter name>} or {<parameter name>:<format>}
       - format : IP, MAC, INT, Float, BOOL,None , STR(default), EOL (or LINE), <number>
@@ -9385,8 +9388,10 @@ def scanf(string,fmt,**opts):
     '''
     err=opts.get('err',opts.get('error',False))
     new_line=opts.get('newline',opts.get('new_line'))
+    find_all=opts.get('find_all',False)
     # Exact same format
-    if opts.get('fix',opts.get('fixed',opts.get('fixed_form',opts.get('same',opts.get('exact_same',opts.get('sameform',opts.get('space',opts.get('whitespace',opts.get('white_space',False))))))))) is True:
+    white_space=opts.get('fix',opts.get('fixed',opts.get('fixed_form',opts.get('same',opts.get('exact_same',opts.get('sameform',opts.get('space',opts.get('whitespace',opts.get('white_space',False)))))))))
+    if white_space is True:
         regex = re.sub(r'{(.+?)}', r'(?P<_\1>.+)', fmt)
         found=re.search(regex, string)
         if found:
@@ -9399,13 +9404,19 @@ def scanf(string,fmt,**opts):
     fmt_d=[]
     fmt_a=fmt.split()
     for i,f in enumerate(fmt_a):
-        if f and f[0] == '{' and f[-1] == '}':
-            f_a=f[1:-1].split(':')
-            if len(f_a) == 2:
-                fmt_d.append({'id':i,'name':f_a[0],'type':'parameter','form':f_a[1]})
-            else:
-                fmt_d.append({'id':i,'name':f[1:-1],'type':'parameter'})
-        else:
+        if isinstance(f,str) and f:
+            ss=-1
+            es=-1
+            if f.count('{') == f.count('}') == 1:
+                ss=f.index('{')
+                es=f.index('}')
+            if ss != -1 and es != -1 and es > ss + 1: # ignore {}
+                f_a=f[ss+1:es].split(':')
+                if len(f_a) == 2:
+                    fmt_d.append({'id':i,'name':f_a[0],'type':'parameter','form':f_a[1]})
+                else:
+                    fmt_d.append({'id':i,'name':f_a[0],'type':'parameter'})
+                continue
             fmt_d.append({'id':i,'name':f,'type':'string'})
     def find_in_line(line_string,fmt_d):
         out={}
@@ -9415,7 +9426,6 @@ def scanf(string,fmt,**opts):
         i=0
         while i < len(line_string_a):
             s=line_string_a[i]
-#        for s in Str2Args(line_string):
             if foundstarts >= len(fmt_d): break
             if fmt_d[foundstarts].get('type') == 'string':
                 if s == fmt_d[foundstarts].get('name'):
@@ -9474,12 +9484,20 @@ def scanf(string,fmt,**opts):
             i+=1
         return out
     if new_line:
+        all_out=[]
         for ll in string.split(new_line):
             out=find_in_line(ll,fmt_d)
-            if out: return out
+            if out: 
+                if find_all:
+                    all_out.append(out)
+                else:
+                    return out
+        if find_all:
+            return all_out
     elif isinstance(string,str):
-        string.replace('\n',' ')
-        return find_in_line(string.replace('\n',' '),fmt_d)
+        string=' '.join(string.split())
+        #string=string.replace('\n',' ')
+        return find_in_line(string,fmt_d)
     return {}
 
 class kRT:
