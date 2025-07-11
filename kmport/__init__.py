@@ -4775,6 +4775,17 @@ class TIME:
             return Human_Unit(rt,unit='S',want_unit=unit,int_out=integer)
         return rt
 
+    def Remain(self,timeout,life_time=False,unit=None,integer=True,human_unit=False,name=''):
+        try:
+            _spend_=self.Spend(life_time=life_time,integer=True,human_unit=False,name=name)
+            _remain_=timeout - _spend_
+            if human_unit:
+                return Human_Unit(_remain_,unit='S',want_unit=unit,int_out=integer)
+            else:
+                return _remain_
+        except:
+            return -1
+
     def Reset(self,name=None,timezone=None):
         if name:
             self.stopwatch[name]=self.Now(timezone=timezone if timezone else self.timezone)
@@ -5596,6 +5607,10 @@ def MacV4(src,**opts):
         if case == 'upper': return src.upper()
         return src.lower()
     return default
+
+def FindMacAddr(string):
+    pattern=re.compile(r'(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}|(?:[0-9A-Fa-f]{2}){6}',re.IGNORECASE)
+    return pattern.findall(string)
 
 def GetIfname(mac):
     net_dir='/sys/class/net'
