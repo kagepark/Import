@@ -4108,7 +4108,7 @@ class HOST:
         if IpV4(ip):
             return ping(ip,keep_good=keep_good,timeout=timeout)
 
-def IpV4(ip,out='str',default=False,port=None,bmc=False,used=False,pool=None,support_hostname=False,ifname=False):
+def IpV4(ip,out='str',default=False,port=None,bmc=False,used=False,pool=None,support_hostname=False,ifname=False,proto='tcp'):
     '''
     check/convert IP
     ip : int, str, domainname, ethernet dev name, None
@@ -4128,6 +4128,9 @@ def IpV4(ip,out='str',default=False,port=None,bmc=False,used=False,pool=None,sup
       List : IP is in the Pool list
     ifname:
       True: ip will network device name then find ip address
+    proto :
+      tcp : default
+      udp : check for open port only
     '''
     if IsIn(ip,['my_ip','local_ip','host_ip','hostip','localip','myip']):
         return HOST().Ip()
@@ -4158,22 +4161,37 @@ def IpV4(ip,out='str',default=False,port=None,bmc=False,used=False,pool=None,sup
 
     if IsNone(ip): return default    
 
-    def IsOpenPort(ip,port):
+    def IsOpenPort(ip,port,proto='tcp'):
         '''
         It connectionable port(?) like as ssh, ftp, telnet, web, ...
         '''
-        tcp_sk = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        tcp_sk.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        tcp_sk.settimeout(1)
-        rt=[]
-        for pt in port:
-            try:
-                tcp_sk.connect((ip,pt))
-                tcp_sk.close()
-                rt.append(pt)
-            except:
-                pass
-        return rt
+        if proto == 'udp':
+            Import('nmap',install_name='python-nmap')
+            nm = nmap.PortScanner()
+            # Check scan results
+            rt=[]
+            for pt in port:
+                try:
+                    nm.scan(hosts=ip, arguments=f'-sU -p {port} -Pn')
+                    state = nm[ip]['udp'][pt]['state']
+                    if IsSame(state,'open'):
+                        rt.append(pt)
+                except KeyError:
+                    pass
+            return rt
+        else:
+            tcp_sk = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            tcp_sk.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            tcp_sk.settimeout(1)
+            rt=[]
+            for pt in port:
+                try:
+                    tcp_sk.connect((ip,pt))
+                    tcp_sk.close()
+                    rt.append(pt)
+                except:
+                    pass
+            return rt
     def IsUsedPort(ip,port):
         '''
         The IP already used the port, it just checkup available port or alread used
@@ -4269,7 +4287,7 @@ def IpV4(ip,out='str',default=False,port=None,bmc=False,used=False,pool=None,sup
                         rt=IsUsedPort(ip_str,port)
                         if rt: return rt
                     else:
-                        rt=IsOpenPort(ip_str,port)
+                        rt=IsOpenPort(ip_str,port,proto)
                         if rt: return rt
                 else:
                     return ip_str
