@@ -2813,11 +2813,14 @@ def Import(*inps,**opts):
     ignore_warning=opts.get('ignore_warning',False)
 
     #Append Module Path
+    python_home=os.environ.get('PYTHONHOME')
+    python_path=os.environ.get('PYTHONPATH')
     virtual_env=os.environ.get('VIRTUAL_ENV')
-    env_base_dir=virtual_env if virtual_env else '/usr'
+    env_base_dir=virtual_env if virtual_env else python_home if python_home else '/usr'
     base_lib_path=[]
     py_ver=PyVer()
-    for i in ['lib/python{}/site-packages'.format(py_ver),'lib64/python{}/site-packages'.format(py_ver),'local/python{}/site-packages'.format(py_ver),'local/lib/python{}/site-packages'.format(py_ver),'local/lib64/python{}/site-packages'.format(py_ver)]:
+    python_search_lib=['lib/python{}/site-packages'.format(py_ver),'lib64/python{}/site-packages'.format(py_ver),'local/python{}/site-packages'.format(py_ver),'local/lib/python{}/site-packages'.format(py_ver),'local/lib64/python{}/site-packages'.format(py_ver)]
+    for i in python_search_lib:
         j=os.path.join(env_base_dir,i)
         if os.path.isdir(j):
             base_lib_path.append(j)
@@ -2835,11 +2838,13 @@ def Import(*inps,**opts):
     if not virtual_env:
         home=Path('~')
         if isinstance(home,str):
-            base_lib_path.append('{}/.local/lib/python3.6/site-packages'.format(home))
-        for ii in base_lib_path:
-            if os.path.isdir(ii) and not ii in sys.path:
-                #sys.path.append(ii)
-                sys.path.insert(0,ii)
+            base_lib_path=['{}/.local/lib/python{}/site-packages'.format(home,py_ver)]+base_lib_path
+    if python_path:
+        base_lib_path=base_lib_path+python_path.split(':')
+    for ii in base_lib_path:
+        if os.path.isdir(ii) and not ii in sys.path:
+            #sys.path.append(ii)
+            sys.path.insert(0,ii)
     if os.getcwd() not in sys.path: sys.path=[os.getcwd()]+sys.path
 
     if not virtual_env and install_account in ['user','--user','personal','myaccount','account','myself']:
