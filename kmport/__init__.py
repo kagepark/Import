@@ -1768,18 +1768,44 @@ def PyDefine(aa):
         return False
     return aa
 
-def WhiteStrip(src,mode=True):
+def WhiteStrip(src,mode=True,reserve_quotes=False):
     '''
     remove multi space to single space, remove first and end space
     others return original
     '''
     src_type=type(src).__name__
-    if mode is True and src_type in ('str','bytes'): 
+    if src_type not in ('str','bytes'): return src
+    # Function to replace multiple spaces with single space outside quotes
+    def replace_unquoted(match):
+        matched_text = match.group(0)  # Get the full matched text
+        # Check if the match is a quoted string (starts with ' or ")
+        if matched_text.startswith('"') or matched_text.startswith("'"):
+            return matched_text  # Preserve quoted strings unchanged
+        return re.sub(r'\s+', ' ', matched_text)  # Replace multiple spaces with single space
+    def replace_unquoted_bytes(match):
+        matched_text = match.group(0)  # Get the full matched text
+        # Check if the match is a quoted string (starts with ' or ")
+        if matched_text.startswith(b'"') or matched_text.startswith(b"'"):
+            return matched_text  # Preserve quoted strings unchanged
+        return re.sub(br'\s+', b' ', matched_text)  # Replace multiple spaces with single space
+
+    if mode is True:
         if src_type == 'bytes':
+            if reserve_quotes:
+                # Pattern: Match quoted strings (single or double) or non-quoted text
+                pattern = br'"[^"]*"|\'[^\']*\'|[^"\']+'
+                return re.sub(pattern, replace_unquoted_bytes, src).strip()
             return re.sub(br'\s+', b' ', src).strip()
         else:
+            if reserve_quotes:
+                # Pattern: Match quoted strings (single or double) or non-quoted text
+                pattern = r'"[^"]*"|\'[^\']*\'|[^"\']+'
+                return re.sub(pattern, replace_unquoted, src).strip()
             return re.sub(r'\s+', ' ', src).strip()
     return src
+
+def StripSpace(src,reserve_quotes=False,mode=True):
+    return WhiteStrip(src,mode=mode,reserve_quotes=reserve_quotes)
 
 def IsSame(src,dest,sense=False,order=False,_type_=False,digitstring=True,white_space=False,pythonlike=False,ignore_keys=[]):
     '''
