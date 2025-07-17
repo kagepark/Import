@@ -35,6 +35,7 @@ import datetime
 import platform
 import traceback
 import subprocess
+import tokenize
 from threading import Thread, Lock
 from importlib import import_module
 # If importing "from kmport import *" then
@@ -86,8 +87,9 @@ krc_define={
 
 try:
     from StringIO import StringIO
+    BytesIO = StringIO
 except ImportError:
-    from io import StringIO
+    from io import StringIO, BytesIO
 
 __version__='2.0.15'
 
@@ -1113,8 +1115,8 @@ def Join(*inps,symbol={None},byte=None,ignore_type=(dict,bool,None),ignore_data=
             append_end=Str(append_end)
     else:
         byte=False
-        if src and isinstance(src,(list,tuple)):
-            if IsBytes(src[0]):
+        if src:
+            if (isinstance(src,(list,tuple)) and IsBytes(src[0])) or IsBytes(src):
                 rt=b''
                 byte=True
                 symbol=Bytes(symbol)
@@ -1768,7 +1770,58 @@ def PyDefine(aa):
         return False
     return aa
 
-def WhiteStrip(src,mode=True,reserve_quotes=False):
+def split_quoted_unquoted(code):
+    # Handle bytes or str input
+    code=Str(code)
+    # Remove trailing newline for consistent tokenization
+    code = code.rstrip('\n')
+
+    # Tokenize the input code
+    try:
+        tokens = list(tokenize.generate_tokens(StringIO(code).readline))
+    except tokenize.TokenError as e:
+        print(f"Tokenization error: {e}")
+        return {'data': [], 'quoted': []}
+
+    # Collect segments (quoted and unquoted) in order
+    data = []
+    quoted = []
+    current_pos = 0  # Tracks position in the code string
+    code_length = len(code)
+
+    # Sort tokens by start position to process in order
+    string_tokens = [t for t in tokens if t.type == tokenize.STRING]
+    string_tokens.sort(key=lambda t: t.start)
+
+    for token in string_tokens:
+        # Calculate start position in the code string
+        start_line, start_col = token.start
+        start_pos = sum(len(line) + 1 for line in code.splitlines()[:start_line-1]) + start_col
+
+        # Add unquoted segment before this string, if any
+        if current_pos < start_pos and current_pos < code_length:
+            unquoted = code[current_pos:start_pos]
+            if unquoted.strip():
+                data.append(unquoted)
+
+        # Add quoted string (raw token with quotes)
+        data.append(token.string)
+        quoted.append(len(data) - 1)  # Index of quoted string in data
+
+        # Update current position to end of string token
+        end_line, end_col = token.end
+        end_pos = sum(len(line) + 1 for line in code.splitlines()[:end_line-1]) + end_col
+        current_pos = end_pos
+
+    # Add any remaining unquoted segment
+    if current_pos < code_length:
+        unquoted = code[current_pos:]
+        if unquoted.strip():
+            data.append(unquoted)
+
+    return {'data': data, 'quoted': quoted}
+
+def WhiteStrip(src,mode=True,reserve_quotes=False,left=True,right=True):
     '''
     remove multi space to single space, remove first and end space
     others return original
@@ -1794,18 +1847,112 @@ def WhiteStrip(src,mode=True,reserve_quotes=False):
             if reserve_quotes:
                 # Pattern: Match quoted strings (single or double) or non-quoted text
                 pattern = br'"[^"]*"|\'[^\']*\'|[^"\']+'
-                return re.sub(pattern, replace_unquoted_bytes, src).strip()
-            return re.sub(br'\s+', b' ', src).strip()
+                out=re.sub(pattern, replace_unquoted_bytes, src)
+            else:
+                out=re.sub(br'\s+', b' ', src)
+            if left and right:
+                out=out.strip()
+            elif left:
+                out=out.lstrip()
+            elif right:
+                out=out.rstrip()
+            return out
         else:
             if reserve_quotes:
                 # Pattern: Match quoted strings (single or double) or non-quoted text
                 pattern = r'"[^"]*"|\'[^\']*\'|[^"\']+'
-                return re.sub(pattern, replace_unquoted, src).strip()
-            return re.sub(r'\s+', ' ', src).strip()
+                out=re.sub(pattern, replace_unquoted, src)
+            else:
+                out=re.sub(r'\s+', ' ', src)
+            if left and right:
+                out=out.strip()
+            elif left:
+                out=out.lstrip()
+            elif right:
+                out=out.rstrip()
+            return out
     return src
 
-def StripSpace(src,reserve_quotes=False,mode=True):
-    return WhiteStrip(src,mode=mode,reserve_quotes=reserve_quotes)
+def StripSpace(src,reserve_quotes=False,mode=True,left=True,right=True):
+    return WhiteStrip(src,mode=mode,reserve_quotes=reserve_quotes,left=left,right=right)
+
+def Strip(src,mode='all',sym='whitespace',default='org',space=' ',reserve_quotes=False):
+    # default: strip function
+    # it can strip using multi characters : sym='abc'
+    # it can use like as replace
+    #   - similar as src.replace(sym,space)
+    if IsIn(sym,['whitespace']):
+        return WhiteStrip(src,reserve_quotes=reserve_quotes,left=True if mode in ['all','left'] else False,right=True if mode in ['all','right'] else False)
+
+    def block_strip(src,strip_symbol,space):
+        all_found=FindIndexStr(src,strip_symbol,match=True,find_all=True)
+        out=[]
+        x=0
+        y=0
+        fm=len(strip_symbol)
+        m=len(src)
+        am=len(all_found)
+        if am:
+            while True:
+                if x >= m: break
+                if y >= am:
+                    out.append(src[all_found[-1]+fm:])
+                    break
+                if all_found[y] <= x < all_found[y]+fm:
+                    x=x+fm
+                    y+=1
+                else:
+                    out.append(src[x:all_found[y]])
+                    x=all_found[y]
+            #return space.join(out)
+            return Join(out,space)
+        return src
+
+    if not isinstance(src,(str,bytes)):
+        if default == 'org':
+            return src
+        return default
+    sub_exp=r'\s+'
+    #if sym == 'whitespace':
+    #    strip_symbol=' '
+    #else:
+    #    strip_symbol=sym
+    src_byte=isinstance(src,bytes)
+    if src_byte:
+        sub_exp=br'\s+'
+        space=Bytes(space)
+        #if sym == 'whitespace':
+        #    strip_symbol=b' '
+        #else:
+        #    strip_symbol=b'{}'.format(sym)
+        strip_symbol=Bytes(sym)
+    else:
+        strip_symbol=sym
+    def strip_unquoted(src,mode,strip_symbol):
+        if mode in ['start','left','begin']:
+            s=FindIndexStr(src,strip_symbol,match=False)
+            return src[s:]
+        elif mode in ['end','right','last']:
+            e=FindIndexStr(src,strip_symbol,match=False,backward=True)
+            return src[:e]
+        elif mode in ['both','edge','outside']:
+            s=FindIndexStr(src,strip_symbol,match=False)
+            e=FindIndexStr(src,strip_symbol,match=False,backward=True)
+            return src[s:e]
+        elif mode in ['inside']:
+            s=FindIndexStr(src,strip_symbol,match=False)
+            e=FindIndexStr(src,strip_symbol,match=False,backward=True)
+            return src[:s] + block_strip(src[s:e],strip_symbol,space) + src[e:]
+        else:
+            return block_strip(src,strip_symbol,space)
+    info=split_quoted_unquoted(src)
+    for i in range(0,len(info['data'])):
+        if i not in info['quoted']:
+            if src_byte:
+                info['data'][i]=strip_unquoted(Bytes(info['data'][i]),mode,strip_symbol)
+            else:
+                info['data'][i]=strip_unquoted(info['data'][i],mode,strip_symbol)
+    return Join(info['data'],space,byte=src_byte)
 
 def IsSame(src,dest,sense=False,order=False,_type_=False,digitstring=True,white_space=False,pythonlike=False,ignore_keys=[]):
     '''
@@ -7613,67 +7760,6 @@ def FindIndexStr(src,f,match=True,backward=False,find_all=False):
         return _backward_(src,f,match,len(src),find_all)
     else:
         return _forward_(src,f,match,0,find_all)
-
-def Strip(src,mode='all',sym='whitespace',default='org',space=' '):
-    # default: strip function
-    # it can strip using multi characters : sym='abc'
-    # it can use like as replace
-    #   - similar as src.replace(sym,space)
-    def block_strip(src,strip_symbol,space):
-        all_found=FindIndexStr(src,strip_symbol,match=True,find_all=True)
-        out=[]
-        x=0
-        y=0
-        fm=len(strip_symbol)
-        m=len(src)
-        am=len(all_found)
-        while True:
-            if x >= m: break
-            if y >= am:
-                out.append(src[all_found[-1]+fm:])
-                break
-            if all_found[y] <= x < all_found[y]+fm:
-                x=x+fm
-                y+=1
-            else:
-                out.append(src[x:all_found[y]])
-                x=all_found[y]
-        return space.join(out)
-
-
-    if not isinstance(src,(str,bytes)):
-        if default == 'org':
-            return src
-        return default
-    sub_exp=r'\s+'
-    if sym == 'whitespace':
-        strip_symbol=' '
-    else:
-        strip_symbol=sym
-    if isinstance(src,bytes):
-        sub_exp=br'\s+'
-        space=b'{}'.format(space)
-        if sym == 'whitespace':
-            strip_symbol=b' '
-        else:
-            strip_symbol=b'{}'.format(sym)
-
-    if mode in ['start','left','begin']:
-        s=FindIndexStr(src,strip_symbol,match=False)
-        return src[s:]
-    elif mode in ['end','right','last']:
-        e=FindIndexStr(src,strip_symbol,match=False,backward=True)
-        return src[:e]
-    elif mode in ['both','edge','outside']:
-        s=FindIndexStr(src,strip_symbol,match=False)
-        e=FindIndexStr(src,strip_symbol,match=False,backward=True)
-        return src[s:e]
-    elif mode in ['inside']:
-        s=FindIndexStr(src,strip_symbol,match=False)
-        e=FindIndexStr(src,strip_symbol,match=False,backward=True)
-        return src[:s] + block_strip(src[s:e],strip_symbol,space) + src[e:]
-    else:
-        return block_strip(src,strip_symbol,space)
 
 def Pop(src,key,default=None):
     if isinstance(src,dict):
