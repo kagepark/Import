@@ -6009,6 +6009,9 @@ def Cut(src,head_len=None,body_len=None,new_line='\n',out=str,front_space=None,n
     _type=type(src)
     for src_idx in range(0,len(source)):
         str_len=len(source[src_idx])
+        if str_len == 0: 
+            rt.append(new_line) #if empth line then just give new_line mark
+            continue
         if head_len == 0: head_len=str_len
         if IsNone(body_len):
             rt=rt+[MergeStr(front_space,source[src_idx][i:i + head_len],_type=_type) for i in range(0, str_len, head_len)]
