@@ -5983,11 +5983,11 @@ def Cut(src,head_len=None,body_len=None,new_line='\n',out=str,front_space=None,n
     if not Type(src,('str','bytes')): return False
     source=Split(src,new_line)
     # swap head_len and body_len when head_len is None
-    if IsNone(head_len) and isinstance(body_len,int):
+    if (IsNone(head_len) or head_len ==0) and isinstance(body_len,int):
         head_len=body_len
         body_len=None
 
-    if not isinstance(head_len,int) or head_len >= len(src):
+    if not isinstance(head_len,int) or (head_len > 0 and head_len >= len(src)):
        if src and out in ['str',str,'string']: return src
        return source # split with new line
 
@@ -6001,7 +6001,7 @@ def Cut(src,head_len=None,body_len=None,new_line='\n',out=str,front_space=None,n
     front_space_head=front_space
     front_space_body=front_space
     if front_space is not None:
-        if head_len and body_len:
+        if head_len >= 0 and body_len >= 0:
             if head_len > body_len:
                 front_space_body=Space(len(front_space)+(head_len-body_len))
             elif head_len < body_len:
@@ -6047,7 +6047,7 @@ def Space(num=4,fill=None,mode='space',tap=''):
         tap=tap+fill
     return tap
 
-def WrapString(string,fspace=0,nspace=0,new_line='\n',flength=0,nlength=0,ntap=0,NFLT=False,mode='space',default='',out='str',ignore_empty_endline=True):
+def WrapString(string,fspace=0,nspace=0,new_line='\n',flength=0,nlength=0,ntap=0,NFLT=False,mode='space',default='',out='str',ignore_empty_endline=True,auto_tap=False):
     #string : printing data
     #fspace : pre space(space before string, before first line)
     #nspace : space for body area
@@ -6065,6 +6065,12 @@ def WrapString(string,fspace=0,nspace=0,new_line='\n',flength=0,nlength=0,ntap=0
     string_a=string.split(new_line)
     #First line design
     if NFLT: fspace=0
+    if nlength==0:
+        if auto_tap:
+            columns, lines = get_terminal_size()
+            first_len=fspace+len(string_a[0])
+            if first_len > columns:
+                nlength=columns - (fspace + nspace + flength)
     rc_str.append(Space(fspace,mode=mode)+Join(Cut(string_a[0],head_len=flength,body_len=nlength,new_line=new_line,out=list),'\n',append_front=Space(nspace,mode=mode)))
     #Body line design
     #for ii in string_a[1:]:
@@ -10392,6 +10398,23 @@ def PDIF(host,func,*args,out=dict,**opts):
             return results
     else:
         return SingleFunc(host,func,args=args,opts=opts)
+
+def get_terminal_size():
+    # Example usage
+    #columns, lines = get_terminal_size()
+    try:
+        # Get terminal size using os.get_terminal_size()
+        size = os.get_terminal_size()
+        return size.columns, size.lines
+    except OSError:
+        # Fallback if above method fails (e.g., not in a terminal)
+        try:
+            Import('shutil')
+            size = shutil.get_terminal_size()
+            return size.columns, size.lines
+        except:
+            # Default values if both methods fail
+            return 80, 24
 
 #if __name__ == "__main__":
 #    # Integer
