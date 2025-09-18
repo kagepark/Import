@@ -2696,7 +2696,11 @@ def ModVersion(mod):
     Find Module Version
     '''
     if PyVer(3,8,'<'): 
-        import pkg_resources
+        try:
+            import pkg_resources
+        except:
+            Install('setuptools')
+            import pkg_resources
         try:
             return pkg_resources.get_distribution(mod).version
         except:
@@ -2774,7 +2778,16 @@ def Install(module,install_account='',mode=None,upgrade=False,version=None,force
         install_cmd=['python3','-m','pip','install']
     if PyVer('>=','3.2'): 
         #pip3 install setuptools  # for pkg_resources 
-        import pkg_resources
+        try:
+            import pkg_resources
+        except:
+            install_cmd.append('setuptools')
+            if pip_main(install_cmd) == 0:
+                import pkg_resources
+            else:
+                print('required install setuptools')
+                os._exit(1)
+
         pkn=pkg_resources.working_set.__dict__.get('by_key',{}).get(install_name)
         if pkn:
             if version:
