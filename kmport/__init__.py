@@ -2066,10 +2066,16 @@ def IsIn(find,dest,idx=False,default=False,sense=False,startswith=True,endswith=
                 if Found(dest[idx],find,digitstring,word,white_space,sense): return True
         else:
             for i in dest:
+                #Fix a bug ( IsIn(6,[146]) => True, It is wrong )
+                if type(i) == type(find) and isinstance(i,int):
+                    _type_=True
                 if IsSame(i,find,sense,order,_type_,digitstring,white_space): return True
     elif isinstance(dest, dict):
         if idx in [None,'',False]:
             for i in dest:
+                #Fix a bug ( IsIn(6,[146]) => True, It is wrong )
+                if type(i) == type(find) and isinstance(i,int):
+                    _type_=True
                 if IsSame(i,find,sense,order,_type_,digitstring,white_space): return True
         else:
             if Found(dest.get(idx),find,digitstring,word,white_space,sense): return True
@@ -5345,10 +5351,10 @@ def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin
              except KeyboardInterrupt:
                 p.terminate()
                 err='Process interrupted by user'
-                p.returncode=253
+                p.returncode=130 # SIGINT(2)
              except subprocess.TimeoutExpired:
                 p.kill()
-                p.returncode=254
+                p.returncode=137 # SIGINT(9)
                 err='Error: Kill process after Timeout {0}'.format(timeout)
           else:
               otimeout='{}'.format(timeout)
@@ -5357,7 +5363,7 @@ def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin
                   timeout = timeout - 0.1
               if p.poll() is None and timeout < 0:
                   p.kill()
-                  p.returncode=254
+                  p.returncode=137 # SIGINT(9)
                   err='Error: Kill process after Timeout {0}'.format(otimeout)
               if len(out) == 0 and len(err) == 0:
                   out, err = p.communicate()
