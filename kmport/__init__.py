@@ -1954,7 +1954,7 @@ def Strip(src,mode='all',sym='whitespace',default='org',space=' ',reserve_quotes
                 info['data'][i]=strip_unquoted(info['data'][i],mode,strip_symbol)
     return Join(info['data'],space,byte=src_byte)
 
-def IsSame(src,dest,sense=False,order=False,_type_=False,digitstring=True,white_space=False,pythonlike=False,ignore_keys=[]):
+def IsSame(src,dest,sense=False,order=False,check_type_only=False,digitstring=True,white_space=False,pythonlike=False,ignore_keys=[]):
     '''
     return True/False
     Check same data or not between src and dest datas
@@ -1966,14 +1966,14 @@ def IsSame(src,dest,sense=False,order=False,_type_=False,digitstring=True,white_
        $                    : end
     <option>
        order                : True: if list,tuple then check ordering too, False:(default) just check data is same or not
-       Type                 : True: check Type only, False:(default) check data
+       check_type_only      : True: check Type only, False:(default) check data
        sense                : True: sensetive, False:(default) lower and upper is same
        white_space          : True: keep white space, False:(default) ignore white_space
        digitstring          : True:(default) string and intiger is same, False: different
     exact same : sense=True,order=True,digitstring=False,white_space=True,pythonlike=False
     same data  : sense=True,digitstring=False[,white_space=True,pythonlike=False]
     '''
-    if _type_ is True: # If check type only
+    if check_type_only is True:
         return Type(src,dest)
     if Type(src,('str','bytes')) and Type(dest,('str','bytes')):# and dest:
         if Type(dest,'bytes') or Type(src,'bytes'):
@@ -1995,7 +1995,14 @@ def IsSame(src,dest,sense=False,order=False,_type_=False,digitstring=True,white_
             src=FormData(src)
         if isinstance(dest,str):
             dest=FormData(dest)
-    if isinstance(src,(list,tuple)) and isinstance(dest,(list,tuple)):
+    if type(src).__name__ == 'int' or type(dest).__name__ == 'int': 
+        #any one is INT then matching with int only
+        src=Int(src)
+        dest=Int(dest)
+        if src is not False and dest is not False and src == dest:
+            return True
+        return False
+    elif isinstance(src,(list,tuple)) and isinstance(dest,(list,tuple)):
         if sense and order: return src == dest
         if len(src) != len(dest): return False
         if order:
@@ -2008,7 +2015,7 @@ def IsSame(src,dest,sense=False,order=False,_type_=False,digitstring=True,white_
             for j in range(0,len(src)):
                 for i in range(0,len(dest)):
                     if (isinstance(src[j],dict) and isinstance(dest[j],dict)) or (isinstance(src[j],(list,tuple)) and isinstance(dest[j],(list,tuple))):
-                        if IsSame(src[j],dest[i],sense,order,_type_,digitstring,white_space,pythonlike,ignore_keys):
+                        if IsSame(src[j],dest[i],sense,order,check_type_only,digitstring,white_space,pythonlike,ignore_keys):
                             a[j]=None
                             b[i]=None
                     elif Found(src[j],dest[i],digitstring=digitstring,white_space=white_space,sense=sense,pythonlike=pythonlike):
@@ -2023,7 +2030,7 @@ def IsSame(src,dest,sense=False,order=False,_type_=False,digitstring=True,white_
             if s in ignore_keys: continue
             if s in dest:
                 if (isinstance(src[s],dict) and isinstance(dest[s],dict)) or (isinstance(src[s],(list,tuple)) and isinstance(dest[s],(list,tuple))):
-                    if not IsSame(src[s],dest[s],sense,order,_type_,digitstring,white_space,pythonlike,ignore_keys): return False
+                    if not IsSame(src[s],dest[s],sense,order,check_type_only,digitstring,white_space,pythonlike,ignore_keys): return False
                 else:
                     if not Found(src[s],dest[s],digitstring=digitstring,white_space=white_space,sense=sense,pythonlike=pythonlike): return False
         return True
@@ -2051,7 +2058,7 @@ def IsIn(find,dest,idx=False,default=False,sense=False,startswith=True,endswith=
        word                 : True:(default) <find> is correct word, False: <find> in insde string
        digitstring          : True:(default) string and intiger is same, False: different
     '''
-    _type_=opts.get('Type',opts.get('_type_',False))
+    check_type_only=opts.get('check_type_only',False)
     #dest_type=TypeName(dest)
     #if dest_type in ['list','tuple','str','bytes']:
     if Type(dest,('list','tuple','str','bytes')):
@@ -2067,16 +2074,14 @@ def IsIn(find,dest,idx=False,default=False,sense=False,startswith=True,endswith=
         else:
             for i in dest:
                 #Fix a bug ( IsIn(6,[146]) => True, It is wrong )
-                if type(i) == type(find) and isinstance(i,int):
-                    _type_=True
-                if IsSame(i,find,sense,order,_type_,digitstring,white_space): return True
+                if IsSame(i,find,sense,order,check_type_only,digitstring,white_space): return True
     elif isinstance(dest, dict):
         if idx in [None,'',False]:
             for i in dest:
                 #Fix a bug ( IsIn(6,[146]) => True, It is wrong )
                 if type(i) == type(find) and isinstance(i,int):
                     _type_=True
-                if IsSame(i,find,sense,order,_type_,digitstring,white_space): return True
+                if IsSame(i,find,sense,order,check_type_only,digitstring,white_space): return True
         else:
             if Found(dest.get(idx),find,digitstring,word,white_space,sense): return True
     return default
