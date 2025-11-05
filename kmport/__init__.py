@@ -5266,7 +5266,7 @@ class TIME:
 
     def __repr__(self):
         t = self.stopwatch.get('init', None)
-        if isinstance(t, datetime):
+        if isinstance(t, self.Datetime()):
             return f"<TIME {t.strftime('%Y-%m-%d %H:%M:%S')}>"
         return f"<TIME {t}>"
 
