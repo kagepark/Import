@@ -5099,18 +5099,32 @@ class TIME:
             return True
         return False
 
-    def Format(self,tformat='%s',read_format='%S',time='_#_'):
+    def Format(self,tformat='%m/%d/%Y %H:%M:%S',read_format='%S',time='_#_'):
         #convert time to format
-        if IsNone(time,chk_val=['_#_'],chk_only=True): time=self.src
+        if IsNone(time,chk_val=['_#_'],chk_only=True): 
+            if self.src:
+                time=self.src
+            else:
+                time=self.stopwatch['init']
         if IsNone(time,chk_val=[None,'',0,'0']):
             return self.Now().strftime(tformat)
-        elif read_format == '%S' or read_format == '%s':
-            if isinstance(time,int) or (isinstance(time,str) and time.isdigit()):
-                return self.Datetime().fromtimestamp(int(time)).strftime(tformat)
+        elif isinstance(time,float) or isinstance(time,int) or (isinstance(time,str) and time.isdigit()):
+            return self.Datetime().fromtimestamp(int(time)).strftime(tformat)
         elif isinstance(time,str):
             return self.Datetime().strptime(time,read_format).strftime(tformat)
         elif isinstance(time,self.Datetime()):
             return time.strftime(tformat)
+
+    def Print(self,timedata=None,time_format='%Y-%m-%d %H:%M:%S'):
+        #similar function between Print() and Format()
+        if not timedata:
+            if self.src:
+                timedata=self.ReadStr(self.src)
+            else:
+                timedata=self.stopwatch['init']
+        if isinstance(timedata,self.Datetime()):
+            return timedata.strftime(time_format)
+        return ''
 
     def Init(self,mode=None):
         return self.Get(name='init',mode=mode)
@@ -5120,16 +5134,6 @@ class TIME:
 
     def Datetime(self):
         return datetime.datetime
-
-    def Print(self,timedata=None,time_format='%Y-%m-%d %H:%M:%S'):
-        if not timedata:
-            if self.src:
-                timedata=self.ReadStr(self.src)
-            else:
-                timedata=self.stopwatch['init']
-        if isinstance(timedata,self.Datetime()):
-            return timedata.strftime(time_format)
-        return ''
 
     #def ReadStr(self,timedata,time_format='%Y-%m-%d %H:%M:%S'):
     def ReadStr(self,timedata=None,time_format=None):
@@ -5201,6 +5205,70 @@ class TIME:
             timedata=self.TimeZone(setzone='UTC',want='local',timedata=timedata)
             return self.Print(timedata=timedata) if IsIn(mode,[str,'str','string']) else int(timedata.timestamp()) if IsIn(mode[int,'int','integer']) else timedata
         return False
+
+    def SimpleCheck(self, value, candidates):
+        if isinstance(value, str):
+            return value.lower() in [str(c).lower() for c in candidates]
+        return value in candidates
+
+    def seconds(self):
+        t = self.stopwatch.get('init', self.Now())
+        return t.timestamp() if isinstance(t, datetime) else float(t)
+
+    def __sub__(self, other):
+        if not isinstance(other, TIME):
+            return NotImplemented
+        return self.seconds() - other.seconds()
+
+    def __add__(self, other):
+        if not isinstance(other, TIME):
+            return NotImplemented
+        return self.seconds() + other.seconds()
+        #s=self.seconds()
+        #o=other.seconds()
+        #if s > o:
+        #    c = o + (s - o)
+        #elif s < o:
+        #    c = s + (o - s)
+        #else:
+        #    c = s
+        #return datetime.fromtimestamp(total)
+
+    def __eq__(self, other):
+        if not isinstance(other, TIME):
+            return NotImplemented
+        return self.seconds() == other.seconds()
+
+    def __lt__(self, other):
+        if not isinstance(other, TIME):
+            return NotImplemented
+        return self.seconds() < other.seconds()
+
+    def __le__(self, other):
+        if not isinstance(other, TIME):
+            return NotImplemented
+        return self.seconds() <= other.seconds()
+
+    def __gt__(self, other):
+        if not isinstance(other, TIME):
+            return NotImplemented
+        return self.seconds() > other.seconds()
+
+    def __ge__(self, other):
+        if not isinstance(other, TIME):
+            return NotImplemented
+        return self.seconds() >= other.seconds()
+
+    def __ne__(self, other):
+        if not isinstance(other, TIME):
+            return NotImplemented
+        return self.seconds() != other.seconds()
+
+    def __repr__(self):
+        t = self.stopwatch.get('init', None)
+        if isinstance(t, datetime):
+            return f"<TIME {t.strftime('%Y-%m-%d %H:%M:%S')}>"
+        return f"<TIME {t}>"
 
 def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin/bash',path=None,progress=False,progress_pre_new_line=False,progress_post_new_line=True,log=None,env={},full_path=None,remove_path=None,remove_all_path=None,default_timeout=3600,env_out=False,cd=False,keep_cwd=False,decode=None,interactive_background_stderr_log=True):
     '''
@@ -8073,7 +8141,7 @@ def cat(filename,**opts):
             r=requests.head(filename)
             if r.status_code==200:
                 data=requests.get(filename).text
-                if byte:
+                if byte in [True,'byte',bytes]:
                     return Bytes(data)
                 return data
             elif r.status_code == 404:
@@ -8102,7 +8170,7 @@ def cat(filename,**opts):
         else: # Read normal file
             with open(filename,'rb') as f:
                 data=f.read()
-        if not byte:
+        if byte not in [True,'byte',bytes]:
            data=Str(data)
     except:
         printf(sys.exc_info()[0],log=log,mode='d' if log else 's')
