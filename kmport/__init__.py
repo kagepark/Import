@@ -5213,7 +5213,7 @@ class TIME:
 
     def seconds(self):
         t = self.stopwatch.get('init', self.Now())
-        return t.timestamp() if isinstance(t, datetime) else float(t)
+        return t.timestamp() if isinstance(t, self.Datetime()) else float(t)
 
     def __sub__(self, other):
         if not isinstance(other, TIME):
