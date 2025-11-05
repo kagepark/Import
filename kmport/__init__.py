@@ -5115,7 +5115,7 @@ class TIME:
         elif isinstance(time,self.Datetime()):
             return time.strftime(tformat)
 
-    def Print(self,timedata=None,time_format='%Y-%m-%d %H:%M:%S'):
+    def Print(self,timedata=None,time_format='%m/%d/%Y %H:%M:%S'):
         #similar function between Print() and Format()
         if not timedata:
             if self.src:
