@@ -5111,9 +5111,16 @@ class TIME:
         elif isinstance(time,float) or isinstance(time,int) or (isinstance(time,str) and time.isdigit()):
             return self.Datetime().fromtimestamp(int(time)).strftime(tformat)
         elif isinstance(time,str):
-            return self.Datetime().strptime(time,read_format).strftime(tformat)
+            if time in self.stopwatch:
+                return self.stopwatch[time].strftime(tformat)
+            else:
+                try:
+                    return self.Datetime().strptime(time,read_format).strftime(tformat)
+                except:
+                    pass
         elif isinstance(time,self.Datetime()):
             return time.strftime(tformat)
+        return ''
 
     def Print(self,timedata=None,time_format='%m/%d/%Y %H:%M:%S'):
         #similar function between Print() and Format()
@@ -5124,6 +5131,8 @@ class TIME:
                 timedata=self.stopwatch['init']
         if isinstance(timedata,self.Datetime()):
             return timedata.strftime(time_format)
+        elif isinstance(timedata,str) and timedata in self.stopwatch:
+            return self.stopwatch[timedata].strftime(time_format)
         return ''
 
     def Init(self,mode=None):
