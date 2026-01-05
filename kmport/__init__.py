@@ -16,9 +16,10 @@ import html
 import copy
 import json
 import gzip
-import zlib
+import stat
 import time
 import uuid
+import zlib
 import fcntl
 import random
 import shutil
@@ -28,6 +29,10 @@ import socket
 import struct
 import pprint
 import pickle
+import zipfile
+import tarfile
+import hashlib
+import fnmatch
 import inspect
 import getpass
 import warnings
@@ -340,6 +345,12 @@ env_global=Environment(name='__Global__')
 env_errors=Environment(name='__Error__')
 env_breaking=Environment(name='__Break__')
 
+def md5(data):
+    if isinstance(data, (bytes, bytearray)):
+        return hashlib.md5(data).hexdigest()
+    else:
+        return hashlib.md5(Bytes(data)).hexdigest()
+
 def Global_bak(loc=0,ignores=['__builtins__','__spec__','__loader__','__cached__','__doc__','__package__','__name__','__file__','__annotations__'],InFunc=False):
     env={'__name__':[],'__file__':[]}
     stacks=inspect.stack()
@@ -352,7 +363,7 @@ def Global_bak(loc=0,ignores=['__builtins__','__spec__','__loader__','__cached__
         for i in a:
             if i == '__file__': env['__file__'].append(a[i])
             if i in ignores: continue
-            if ii <= 2:
+            if i <= 2:
                 env[i]=a[i]
             else:
                 if i not in env: env[i]=a[i]
@@ -682,7 +693,7 @@ class STR(str):
            self.src='''{}'''.format(self.src)
         return Cut(self.src,head_len,body_len,new_line,out)
 
-    def Space(num=1,fill=' ',mode='space'):
+    def Space(self,num=1,fill=' ',mode='space'):
         return Space(num,fill,mode)
 
     def Reduce(self,start=0,end=None,sym=None,default=None):
@@ -1495,7 +1506,7 @@ class FIND:
              return 'Unknown format'
         return rt
 
-    def Find(self,find,src='_#_',sym='\n',default=[],out=None,findall=True,word=False,mode='value',prs=None,line_num=False,peel=None,idx=None):
+    def Find(self,find,src='_#_',sym='\n',default=[],out=None,findall=True,word=False,mode='value',prs=None,line_num=False,peel=None,idx=None,dep=None):
         if IsNone(src,chk_val=['_#_'],chk_only=True): src=self.src
         #if Type(src,'instance','classobj'):
         # if src is instance or classobj then search in description and made function name at key
@@ -1514,17 +1525,17 @@ class FIND:
                         path.append(key)
                 found=src.get(key,None)
                 if isinstance(found,dict):
-                    if dep in found:
+                    if dep and dep in found:
                          if mode in ['value','*','all'] and (find == found[dep] or (type(found[dep]) in [DICT,dict,list,tuple] and find in found[dep]) or (type(find) is str and type(found[dep]) is str and find in found[dep])): # find in 'find' only
                               # Value find
                               path.append(key)
                          elif isinstance(found[dep], dict): # recursing
-                              path=path+self.Find(find,found[dep],proper=proper,mode=mode)
+                              path=path+self.Find(find,found[dep],prs=prs,mode=mode)
                     else:
                          if mode in ['value','*','all'] and find == found or (type(found) in [list,tuple] and find in found) or (type(find) is str and type(found) is str and find in found):
                              path.append(key)
                          else:
-                             for kk in self.Find(find,src[key],proper=proper,mode=mode,out=dict,default={}): # recursing
+                             for kk in self.Find(find,src[key],prs=prs,mode=mode,out=dict,default={}): # recursing
                                  path.append(key+'/'+kk)
                 else:
                     if mode in ['value','*','all'] and find == found or (type(found) in [list,tuple] and find in found) or (type(find) is str and type(found) is str and find in found):
@@ -2290,7 +2301,7 @@ def Max(obj,key=False,err=True):
     #print('>>',obj)
     if isinstance(obj,(list,tuple)):
         if key is True:
-            return _obj_max_idx_(obj,err=err)
+            return _obj_max_idx_(obj,-1,err=err)
         elif IsIn(key,['ver','version']):
             a='0.0'
             for i in obj:
@@ -3406,6 +3417,17 @@ def FunctionList(obj=None):
                 aa.update({name:fobj})
     return aa
 
+def GetFuncNameObj(mod,func_name=None):
+    #Get Function Object from module
+    members = inspect.getmembers(mod)
+    if func_name:
+        for name, val in members:
+            if name == func_name and inspect.isfunction(val):
+                return val
+        return None
+    else:
+        return members
+
 def GetClass(obj,default=None):
     '''
     Get Class object from instance,method,function
@@ -3433,7 +3455,7 @@ def GetClass(obj,default=None):
             #caller_module_name=inspect.currentframe().f_back.f_globals['__name__']
             #caller_module=sys.modules[caller_module_name]
             caller_module=inspect.getmodule(inspect.currentframe().f_back)
-            return getattr(caller_module_name,'.'.join(obj.__qualname__.split('.')[:-1]))
+            return getattr(caller_module,'.'.join(obj.__qualname__.split('.')[:-1]))
     return default
 
 def FunctionArgs(func,**opts):
@@ -3850,7 +3872,7 @@ def Get(*inps,**opts):
             return FunctionName(parent=opts.get('parent',1)) # my parent's function name
         elif isinstance(inps[0],str):
             if inps[0].lower() in ['func','function','functions','funclist','func_list','list']:
-                return FunctionList(parent=opts.get('parent',-1)) # default: my page's function list
+                return FunctionList() # default: my page's function list
             return Variable(inps[0],parent=opts.get('parent',1)) # my parent's variable
     inps=list(inps)
     obj=inps[0]
@@ -3905,19 +3927,22 @@ def Get(*inps,**opts):
             if idx_type == 'str':
                 if nidx.lower() in ['args','arguments']:
                     if obj == '_this_':
-                        obj=inspect.getmembers(MyModule()).get(CallerName())
+                        fnd_name=GetFuncNameObj(MyModule(),func_name=CallerName())
+                        if fnd_name:
+                            obj=fnd_name
                     return FunctionArgs(obj)
                 else:
                     if obj == '_this_':
                         return Variable(nidx,parent=1)
-                    return Varable(nidx,obj)
+                    return Variable(nidx,obj)
             elif idx_type == 'list':
                 rt=[]
                 for i in nidx:
                     if Type(i,str) and i.lower() in ['args','arguments']:
                         if obj == '_this_':
-                            obj2=inspect.getmembers(MyModule()).get(CallerName())
-                            rt.append(FunctionArgs(obj2))
+                            fnd_name=GetFuncNameObj(MyModule(),func_name=CallerName())
+                            if fnd_name:
+                                rt.append(FunctionArgs(fnd_name))
                         else:
                             rt.append(FunctionArgs(obj))
                     else:
@@ -4278,7 +4303,7 @@ class HOST:
             if log:
                 log('[',direct=True,log_level=1)
             while True:
-                if time.Out(timeout_sec):
+                if time.Out(timeout):
                     if log:
                         log(']\n',direct=True,log_level=1)
                     return False,'Timeout monitor'
@@ -5099,41 +5124,18 @@ class TIME:
             return True
         return False
 
-    def Format(self,tformat='%m/%d/%Y %H:%M:%S',read_format='%S',time='_#_'):
+    def Format(self,tformat='%s',read_format='%S',time='_#_'):
         #convert time to format
-        if IsNone(time,chk_val=['_#_'],chk_only=True): 
-            if self.src:
-                time=self.src
-            else:
-                time=self.stopwatch['init']
+        if IsNone(time,chk_val=['_#_'],chk_only=True): time=self.src
         if IsNone(time,chk_val=[None,'',0,'0']):
             return self.Now().strftime(tformat)
-        elif isinstance(time,float) or isinstance(time,int) or (isinstance(time,str) and time.isdigit()):
-            return self.Datetime().fromtimestamp(int(time)).strftime(tformat)
+        elif read_format == '%S' or read_format == '%s':
+            if isinstance(time,int) or (isinstance(time,str) and time.isdigit()):
+                return self.Datetime().fromtimestamp(int(time)).strftime(tformat)
         elif isinstance(time,str):
-            if time in self.stopwatch:
-                return self.stopwatch[time].strftime(tformat)
-            else:
-                try:
-                    return self.Datetime().strptime(time,read_format).strftime(tformat)
-                except:
-                    pass
+            return self.Datetime().strptime(time,read_format).strftime(tformat)
         elif isinstance(time,self.Datetime()):
             return time.strftime(tformat)
-        return ''
-
-    def Print(self,timedata=None,time_format='%m/%d/%Y %H:%M:%S'):
-        #similar function between Print() and Format()
-        if not timedata:
-            if self.src:
-                timedata=self.ReadStr(self.src)
-            else:
-                timedata=self.stopwatch['init']
-        if isinstance(timedata,self.Datetime()):
-            return timedata.strftime(time_format)
-        elif isinstance(timedata,str) and timedata in self.stopwatch:
-            return self.stopwatch[timedata].strftime(time_format)
-        return ''
 
     def Init(self,mode=None):
         return self.Get(name='init',mode=mode)
@@ -5143,6 +5145,16 @@ class TIME:
 
     def Datetime(self):
         return datetime.datetime
+
+    def Print(self,timedata=None,time_format='%Y-%m-%d %H:%M:%S'):
+        if not timedata:
+            if self.src:
+                timedata=self.ReadStr(self.src)
+            else:
+                timedata=self.stopwatch['init']
+        if isinstance(timedata,self.Datetime()):
+            return timedata.strftime(time_format)
+        return ''
 
     #def ReadStr(self,timedata,time_format='%Y-%m-%d %H:%M:%S'):
     def ReadStr(self,timedata=None,time_format=None):
@@ -5158,7 +5170,7 @@ class TIME:
                     pass
         return ''
 
-    def TimeZone(self,setzone=None,want=None,name=None,timedata=None):
+    def TimeZone(self,setzone=None,want=None,name=None,timedata=None,time_format=None):
         '''set timezone at timedata or convert to want timezone'''
         if isinstance(timedata,str):
             timedata=self.ReadStr(timedata,time_format=time_format)
@@ -5196,7 +5208,7 @@ class TIME:
             return timedata
         return False
 
-    def TimeZoneName(self,name=None,timedata=None):
+    def TimeZoneName(self,name=None,timedata=None,time_format=None):
         if isinstance(timedata,str):
             timedata=self.ReadStr(timedata,time_format=time_format)
         elif timedata is None:
@@ -5214,70 +5226,6 @@ class TIME:
             timedata=self.TimeZone(setzone='UTC',want='local',timedata=timedata)
             return self.Print(timedata=timedata) if IsIn(mode,[str,'str','string']) else int(timedata.timestamp()) if IsIn(mode[int,'int','integer']) else timedata
         return False
-
-    def SimpleCheck(self, value, candidates):
-        if isinstance(value, str):
-            return value.lower() in [str(c).lower() for c in candidates]
-        return value in candidates
-
-    def seconds(self):
-        t = self.stopwatch.get('init', self.Now())
-        return t.timestamp() if isinstance(t, self.Datetime()) else float(t)
-
-    def __sub__(self, other):
-        if not isinstance(other, TIME):
-            return NotImplemented
-        return self.seconds() - other.seconds()
-
-    def __add__(self, other):
-        if not isinstance(other, TIME):
-            return NotImplemented
-        return self.seconds() + other.seconds()
-        #s=self.seconds()
-        #o=other.seconds()
-        #if s > o:
-        #    c = o + (s - o)
-        #elif s < o:
-        #    c = s + (o - s)
-        #else:
-        #    c = s
-        #return datetime.fromtimestamp(total)
-
-    def __eq__(self, other):
-        if not isinstance(other, TIME):
-            return NotImplemented
-        return self.seconds() == other.seconds()
-
-    def __lt__(self, other):
-        if not isinstance(other, TIME):
-            return NotImplemented
-        return self.seconds() < other.seconds()
-
-    def __le__(self, other):
-        if not isinstance(other, TIME):
-            return NotImplemented
-        return self.seconds() <= other.seconds()
-
-    def __gt__(self, other):
-        if not isinstance(other, TIME):
-            return NotImplemented
-        return self.seconds() > other.seconds()
-
-    def __ge__(self, other):
-        if not isinstance(other, TIME):
-            return NotImplemented
-        return self.seconds() >= other.seconds()
-
-    def __ne__(self, other):
-        if not isinstance(other, TIME):
-            return NotImplemented
-        return self.seconds() != other.seconds()
-
-    def __repr__(self):
-        t = self.stopwatch.get('init', None)
-        if isinstance(t, self.Datetime()):
-            return f"<TIME {t.strftime('%Y-%m-%d %H:%M:%S')}>"
-        return f"<TIME {t}>"
 
 def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin/bash',path=None,progress=False,progress_pre_new_line=False,progress_post_new_line=True,log=None,env={},full_path=None,remove_path=None,remove_all_path=None,default_timeout=3600,env_out=False,cd=False,keep_cwd=False,decode=None,interactive_background_stderr_log=True):
     '''
@@ -5347,7 +5295,7 @@ def rshell(cmd,dbg=False,timeout=0,ansi=False,interactive=False,executable='/bin
         full_path_a=full_path.split(':')
         for ii in remove_all_path.split(':'):
             full_path_a=[i for i in full_path_a if i != ii]
-        full_path=':'.join(full_path_)
+        full_path=':'.join(full_path_a)
     if executable:
         if not os.path.isfile(executable):
             executable=find_executable(exe_name)
@@ -6345,13 +6293,13 @@ def rm(*args,**opts):
                    if 'f' in arg:
                       force=True
                 else:
-                    if os.isfile(arg):
+                    if os.path.isfile(arg):
                         if not force:
                             yn=cli_input('Delete {} (Y/N)?')
                             if not isinstance(yn,str) or yn.lower() not in ['y','yes']: continue
                         #os.remove(arg)
                         os.unlink(arg)
-                    elif os.isdir(arg):
+                    elif os.path.isdir(arg):
                         if sub_dir:
                             if not force:
                                 yn=cli_input('Delete {} (Y/N)?')
@@ -7182,6 +7130,7 @@ def printf(*msg,**opts):
     
     # save msg(removed log_file information) to syslogd 
     if syslogd:
+        import syslog
         # Make a message to single line
         tmp_str=msg_maker(*msg,msg_split=msg_split)
         if syslogd in ['INFO','info']:
@@ -7690,7 +7639,7 @@ def MkTemp(filename=None,suffix=None,split='-',opt='dry',base_dir=None,uniq=Fals
     # New design
     def outfile(filename,opt):
         if opt in ['file','f']:
-           os.mknode(filename)
+           os.mknod(filename)
         elif opt in ['dir','d','directory']:
            os.mkdir(filename)
         else:
@@ -7805,7 +7754,7 @@ def osversion(mode='upper'):
         out['version']=platform.mac_ver()
     elif IsSame(_p_system,'Windows'):
         out['name']=_p_system.lower() if mode == 'l' else _p_system.upper()
-        out['version']=platform.win32_ver()()
+        out['version']=platform.win32_ver()
     else:
         out['name']=_p_system.lower() if mode == 'l' else _p_system.upper()
     return out
@@ -8203,20 +8152,68 @@ def Compress(data,mode='gzip'):
     except:
         return False
 
-def Decompress(data,mode='gzip'):
+#def Decompress(data,mode='gzip'):
+#    try:
+#        if isinstance(data,str) and os.path.isfile(data):
+#            with open(data,'rb') as f:
+#                data=f.read()
+#        if mode == 'lz4':
+#            Import('from lz4 import frame')
+#            return frame.decompress(data)
+#        elif mode == 'bz2':
+#            return bz2.BZ2Decompressor().decompress(data)
+#        elif mode == 'gzip':
+#            return gzip.decompress(data)
+#        else:
+#            return zlib.decompress(data)
+#    except:
+#        return False
+
+def Decompress(data,mode='gzip',work_path='/tmp',del_org_file=False,file_info={}):
+    def FileName(filename):
+        #return Filename, FileExt
+        if isinstance(filename,str):
+            filename_info=os.path.basename(filename).split('.')
+            if 'tar' in filename_info:
+                idx=filename_info.index('tar')
+            else:
+                idx=-1
+            #return '.'.join(filename_info[:idx]),'.'.join(filename_info[idx:])
+            return Join(filename_info[:idx],symbol='.'),Join(filename_info[idx:],symbol='.')
+        return None,None
+
+    def FileType(filename,default=False):
+        if not isinstance(filename,str) or not os.path.isfile(filename): return default
+        Import('import magic',install_name='python-magic')
+        aa=magic.from_buffer(open(filename,'rb').read(2048))
+        if aa: return aa.split()[0].lower()
+        return 'unknown'
+
     try:
-        if isinstance(data,str) and os.path.isfile(data):
-            with open(data,'rb') as f:
-                data=f.read()
         if mode == 'lz4':
             Import('from lz4 import frame')
             return frame.decompress(data)
         elif mode == 'bz2':
+            Import('import bz2')
             return bz2.BZ2Decompressor().decompress(data)
         elif mode == 'gzip':
             return gzip.decompress(data)
-        else:
+        elif mode == 'zlib':
             return zlib.decompress(data)
+        elif mode == 'file' and isinstance(data,str) and os.path.isfile(data):
+            filename,fileext=FileName(data)
+            filetype=FileType(data)
+            if filetype and fileext:
+                # Tar stuff
+                if fileext in ['tgz','tar','tar.gz','tar.bz2','tar.xz'] and filetype in ['gzip','tar','bzip2','lzma','xz','bz2']:
+                    tf=tarfile.open(data)
+                    tf.extractall(work_path)
+                    tf.close()
+                elif fileext in ['zip'] and filetype in ['compress']:
+                    with zipfile.ZipFile(data,'r') as zf:
+                        zf.extractall(work_path)
+                if del_org_file: os.unlink(data)
+                return True
     except:
         return False
 
@@ -8471,6 +8468,7 @@ class FILE_W:
             return rt
 
         def _Get_(root_path,*filenames,**opts):
+            Import('import md5')
             data=opts.get('data',False)
             md5sum=opts.get('md5sum',False)
             link2file=opts.get('link2file',False)
@@ -8562,7 +8560,7 @@ class FILE_W:
             if self.Extract(filename,work_path=work_path):
                 if bin_name:
                     rt=[]
-                    for ff in self.Find(work_path,filename=bin_name):
+                    for ff in self.Find(bin_name):
                         if self.Info(ff).get('mode') == 33261:
                             rt.append(ff)
                     return rt
@@ -9771,6 +9769,7 @@ class kRT:
         # X True : merge kwargs's args to args
         # X False: error
         # X None : keep kwargs's args
+        self.arg = args
         if isinstance(_history_,str):
             history_a=_history_.split('-')
             if len(history_a) == 2:
@@ -9783,7 +9782,7 @@ class kRT:
             historyrange='1-5'
         self.__info__={'history':FunctionName(parent=historyrange,history=True,tree=True,line_number=True,filename=True,args=True),'parent':None,'time':TIME().Int()}
         if 'args' in kwargs:
-            if arg:
+            if self.arg:
                 raise IndexError('duplicated args parameter')
             else:
                 if isinstance(kwargs['args'],list):
@@ -9808,8 +9807,6 @@ class kRT:
             #        self.args=tuple(kwargs['args'])
             #    else:
             #        self.args=tuple([kwargs['args']])
-        else:
-            self.arg=args
         if 'parent' in kwargs:
             if type(kwargs['parent']) == type(self):
                 self.__info__['parent']=kwargs.pop('parent')
@@ -10266,18 +10263,27 @@ class Dot(str):
     #if Dot(None) or Dot('') then no symbol
     #if Dot_dbg=True in Environment(name='__Global__') or Dot.dbg=True then it will show debugging information
     dbg = False  # Class-level debug flag
+    symbol: str
 
     def __new__(cls,symbol='.'):
+        if symbol is None or symbol == '':
+            symbol=''
+        if not isinstance(symbol,str):
+            symbol=str(symbol)
         obj = super().__new__(cls, symbol)
-        if not symbol:
-            obj.symbol=''
-        else:
-            obj.symbol = symbol
+        obj.symbol = symbol
         return obj
 
     def __str__(self):
         if Dot.dbg or env_global.get('Dot_dbg'):
-            arg={'parent':env_global.get('Dot_parent','3-10'),'args':False,'history':True,'tree':True,'filename':True,'line_number':True}
+            arg={
+                    'parent':env_global.get('Dot_parent','3-10'),
+                    'args':False,
+                    'history':True,
+                    'tree':True,
+                    'filename':True,
+                    'line_number':True
+            }
             call_name=FunctionName(**arg)
             if call_name:
                 if env_global.get('__Dot_continue__') != call_name:
@@ -10287,10 +10293,9 @@ class Dot(str):
                     call_name=call_name+[' ']
                     intro_msg=WrapString(Join(call_name,'\n'),fspace=0, nspace=0,mode='space',ignore_empty_endline=False) + ': '
                     return f"{intro_msg} {self.symbol}"
-        #if self.symbol == 'n':
         if not self.symbol:
             return ''
-        return f"{self.symbol}"
+        return self.symbol
 
 def CodePrint(code,line_number=False,output=False):
     out=[]
