@@ -5444,19 +5444,25 @@ def IsBreak(cancel_func=None,value=None,**opts):
                 canceled=FeedFunc(cancel_func,cancel_args)
         else:
             canceled=FeedFunc(cancel_func)
-        if canceled:
-            env_breaking.set('REVD',value)
-            return True,'Canceled'
+        if canceled[0] is True and len(canceled) > 1:
+            if isinstance(canceled[1],tuple):
+                if canceled[1][0] is True:
+                    env_breaking.set('REVD',value)
+                    return True,f'Canceled(Function({cancel_func.__name__}({cancel_args})) -> {canceled[1]})'
+            elif isinstance(canceled[1],bool):
+                if canceled[1] is True:
+                    env_breaking.set('REVD',value)
+                    return True,f'Canceled(Function({cancel_func.__name__}({cancel_args})) -> {canceled[1]})'
     elif isinstance(cancel_func,bool):
         if cancel_func is True:
             canceled=True
             env_breaking.set('REVD',value)
-            return True,'Canceled'
+            return True,'Canceled(BOOL)'
     elif IsIn(cancel_func,['REVD','break','cancel','canceled','canceling','REV','stop']):
         #Set Cancel to True
         if value is True:
             env_breaking.set('REVD',value)
-            return True,'Set Canceled'
+            return True,'Canceled(TAG:{cancel_func})'
     for k in ['REVD','break','cancel','canceled','canceling','REV','stop']:
         cancel_msg=env_breaking.get(k)
         if cancel_msg:
@@ -5474,8 +5480,8 @@ def IsBreak(cancel_func=None,value=None,**opts):
     #    return True,f'Condition: {cancel_func} with {cancel_args}'
     #return False,'No condition'
 
-def IsCancel(func=None,**opts):
-    return IsBreak(func,**opts)
+#def IsCancel(func=None,**opts):
+#    return IsBreak(func,**opts)
 
 def FixApostropheInString(string):
     if isinstance(string,str):
