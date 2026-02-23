@@ -524,23 +524,27 @@ def StdOut(msg):
     '''
     Standard Output Print without new line symbol
     '''
+    if msg in ['',None]:
+        return
     try:
         if type(msg).__name__ == 'bytes':
             sys.stdout.buffer.write(msg)
         else:
-            sys.stdout.write(msg)
-        sys.stdout.flush()
-    except:
-        StdErr('Wrong output data format\n')
+            sys.stdout.write(str(msg))
+    except Exception as e:
+        StdErr('Wrong output data format\n{e}\n')
+     sys.stdout.flush()
 
 def StdErr(msg):
     '''
     Standard Error Print without new line symbol
     '''
+    if msg in ['',None]:
+        return
     try:
-        sys.stderr.write(msg)
-    except:
-        sys.stderr.write('Wrong Error data format\n')
+        sys.stderr.write(str(msg))
+    except Exception as e:
+        sys.stderr.write('Wrong Error data format\n{e}\n')
     sys.stderr.flush()
 
 def PyVer(*ver,**opts):
