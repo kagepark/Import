@@ -533,7 +533,7 @@ def StdOut(msg):
             sys.stdout.write(str(msg))
     except Exception as e:
         StdErr('Wrong output data format\n{e}\n')
-     sys.stdout.flush()
+    sys.stdout.flush()
 
 def StdErr(msg):
     '''
