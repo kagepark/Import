@@ -531,9 +531,9 @@ def StdOut(msg):
             sys.stdout.buffer.write(msg)
         else:
             sys.stdout.write(str(msg))
+        sys.stdout.flush()
     except Exception as e:
         StdErr('Wrong output data format\n{e}\n')
-    sys.stdout.flush()
 
 def StdErr(msg):
     '''
